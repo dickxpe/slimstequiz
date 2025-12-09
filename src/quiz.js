@@ -1,4 +1,12 @@
 let canvas = document.querySelector("canvas");
+// Ensure CSS is loaded from correct relative path
+if (!document.getElementById('quiz-css-link')) {
+    const link = document.createElement('link');
+    link.id = 'quiz-css-link';
+    link.rel = 'stylesheet';
+    link.href = '../styles/index.css';
+    document.head.appendChild(link);
+}
 // --- Show 3 input field values at top ---
 function injectHeaderText() {
     // Inject font-face for DIN Black and Hello
@@ -110,7 +118,7 @@ function injectHeaderText() {
     }
 
     // Set round label text from localStorage
-    const roundNames = ["EDIT", "3-6-9", "OPEN DEUR", "PUZZEL", "GALLERIJ", "COLLEC. GEH.", "FINALE"];
+    const roundNames = ["3-6-9", "OPEN DEUR", "PUZZEL", "GALLERIJ", "COLLEC. GEH.", "FINALE"];
     function updateRoundLabel() {
         let roundIndex = parseInt(localStorage.getItem('roundIndex'));
         if (!isNaN(roundIndex) && roundIndex >= 0 && roundIndex < roundNames.length) {

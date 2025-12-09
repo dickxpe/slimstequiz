@@ -9,6 +9,15 @@ if (!document.getElementById('admin-gradient-bg-style')) {
         `;
     document.head.appendChild(style);
 }
+
+// Ensure CSS is loaded from correct relative path
+if (!document.getElementById('admin-css-link')) {
+    const link = document.createElement('link');
+    link.id = 'admin-css-link';
+    link.rel = 'stylesheet';
+    link.href = '../styles/index.css';
+    document.head.appendChild(link);
+}
 // Inject button hover styles for color highlights
 if (!document.getElementById('admin-button-hover-style')) {
     const style = document.createElement('style');
@@ -860,8 +869,13 @@ function renderTeams() {
             startQuizBtn.textContent = 'START QUIZ';
         }
         startQuizBtn.onclick = function () {
-            // Set round to 3-6-9 (index 1) on quiz start
-            localStorage.setItem('roundIndex', 1);
+            // Set roundIndex to the currently selected round
+            var roundLabel = document.getElementById('roundLabel');
+            var roundNames = ["3-6-9", "OPEN DEUR", "PUZZEL", "GALLERIJ", "COLLEC. GEH.", "FINALE"];
+            var currentRound = roundLabel ? roundLabel.textContent.trim() : '';
+            var roundIndex = roundNames.indexOf(currentRound);
+            if (roundIndex === -1) roundIndex = 0; // fallback to 3-6-9
+            localStorage.setItem('roundIndex', roundIndex);
             localStorage.setItem('quizStarted', '1');
             localStorage.setItem('quizWasStarted', '1');
             localStorage.setItem('nextEnabledTeamIndex', 0); // Only enable first row
@@ -870,7 +884,7 @@ function renderTeams() {
             if (titleLabel) {
                 titleLabel.style.display = 'none';
             }
-            window.open('quiz.html', '_blank', 'location=no,menubar=no,scrollbars=no,status=no,toolbar=no');
+            window.open('src/quiz.html', '_blank', 'location=no,menubar=no,scrollbars=no,status=no,toolbar=no');
             renderTeams(); // re-render to show STOP button and hide add row
         };
     }
@@ -1142,6 +1156,11 @@ function reset() {
         localStorage.setItem('quizStarted', '0');
         localStorage.setItem('quizWasStarted', '0');
         localStorage.setItem('nextEnabledTeamIndex', -1);
+        localStorage.removeItem('roundIndex');
+        localStorage.removeItem('nextTurnCount');
+        if (typeof refreshNextTurnCounterDisplay === 'function') {
+            refreshNextTurnCounterDisplay();
+        }
         // Optionally reset other quiz state variables here
         location.reload();
     }
