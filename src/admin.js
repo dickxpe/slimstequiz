@@ -366,7 +366,7 @@ function renderTeams() {
 
             const labelEl = document.createElement('span');
             labelEl.id = 'nextTurnCounterLabel';
-            labelEl.textContent = 'BEURT #';
+            labelEl.textContent = 'VRAAG #';
             labelEl.style.fontSize = '1.3em';
             labelEl.style.fontWeight = 'bold';
             labelEl.style.letterSpacing = '1px';
