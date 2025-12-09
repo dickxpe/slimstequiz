@@ -59,6 +59,12 @@
             const nextRoundBtn = document.getElementById('nextRound');
             const prevRoundBtn = document.getElementById('prevRound');
             const nextTurnBtn = document.getElementById('nextTurn');
+            const confirmRoundChange = (direction) => {
+                const message = direction === 'next'
+                    ? 'Ga naar de volgende ronde?'
+                    : 'Terug naar de vorige ronde?';
+                return window.confirm(message);
+            };
             // Set roundIndex from localStorage if available
             let storedRoundIndex = parseInt(localStorage.getItem('roundIndex'));
             if (!isNaN(storedRoundIndex) && storedRoundIndex >= 0 && storedRoundIndex < roundNames.length) {
@@ -67,18 +73,26 @@
             if (roundLabel && nextRoundBtn && prevRoundBtn) {
                 roundLabel.textContent = roundNames[roundIndex];
                 nextRoundBtn.addEventListener('click', function() {
+                    if (nextRoundBtn.disabled) return;
                     if (roundIndex < roundNames.length - 1) {
+                        if (!confirmRoundChange('next')) return;
+                        localStorage.setItem('currentTeam', -1); // Stop score counter
                         roundIndex++;
                         roundLabel.textContent = roundNames[roundIndex];
                         localStorage.setItem('roundIndex', roundIndex);
+                        localStorage.setItem('nextTurnCount', '1');
                         if (window.renderTeams) window.renderTeams();
                     }
                 });
                 prevRoundBtn.addEventListener('click', function() {
+                    if (prevRoundBtn.disabled) return;
                     if (roundIndex > 0) {
+                        if (!confirmRoundChange('prev')) return;
+                        localStorage.setItem('currentTeam', -1); // Stop score counter
                         roundIndex--;
                         roundLabel.textContent = roundNames[roundIndex];
                         localStorage.setItem('roundIndex', roundIndex);
+                        localStorage.setItem('nextTurnCount', '1');
                         if (window.renderTeams) window.renderTeams();
                     }
                 });
@@ -90,8 +104,8 @@
             <div id="teamsContainer"></div>
         </div>
         <div id="addTeamContainer" style="margin-left: 40px;margin-top: 10px;margin-bottom: 18px; display: flex; gap: 16px; align-items: center;">
-            <input id="addTeamName" type="text" placeholder="New team name" style="background-color: #fea400; width: 320px; height: 58px; font-size: 1.5em; padding: 0 18px;" />
-            <button id="addTeamBtn" style="background-color: darkblue; color: white;width: 272px; margin-left: 6px; height: 58px; font-size: 1.3em; padding: 0 32px;">ADD TEAM</button>
+            <input id="addTeamName" type="text" placeholder="TEAM NAAM" style="background-color: #fea400; width: 320px; height: 58px; font-size: 1.5em; padding: 0 18px;" />
+            <button id="addTeamBtn" style="background-color: darkblue; color: white;width: 272px; margin-left: 6px; height: 58px; font-size: 1.3em; padding: 0 32px;">VOEG TEAM TOE</button>
         </div>
                     <div style="display: flex; flex-direction: row; align-items: center; margin-left: 40px; margin-bottom: 16px; margin-top: 10px; gap: 16px;">
                         <button id="stop" style="width:1100px; height: 140px; background-color: darkred; color: white; font-size: 2em;">STOP</button>
@@ -99,13 +113,13 @@
                     <!-- Removed extra <br /> to reduce vertical space -->
                     <div style="display: flex; flex-direction: row; align-items: center; margin-left: 40px; margin-bottom: 16px; margin-top: 10px; gap: 16px;">
                         <button id="prevRound" style="height: 58px; width:40px;background-color: #222aaa; color: white; font-size: 2em; padding: 0 4px;">&LessLess;</button>
-                        <span id="roundLabel" style="font-size: 2em; font-weight: bold; color: #fff8e1; background: #222aaa; border-radius: 12px; padding: 0 24px; height: 58px; width: 260px; display: flex; align-items: center; justify-content: center;">EDIT</span>
+                        <span id="roundLabel" style="font-size: 2em; font-weight: bold; color: #fff8e1; background: #222aaa; border-radius: 12px; padding: 0 24px; height: 58px; width: 260px; display: flex; align-items: center; justify-content: center;">BEWERK</span>
                         <button id="nextRound" style="height: 58px;width:40px; background-color: #2222aa; color: white; font-size: 2em; padding: 0 4px;">&GreaterGreater;</button>
-                        <button id="nextTurn" style="height: 58px; background-color: purple; color: white; font-size: 2em; padding: 0 32px;">NEXT TURN</button>
+                        <button id="nextTurn" style="height: 58px; background-color: purple; color: white; font-size: 2em; padding: 0 32px;">BEEINDIG BEURT</button>
                     </div>
                     <!-- Removed extra <br /> to reduce vertical space -->
         <div id="titleRow" style="margin-left: 40px; margin-bottom: 18px; display: flex; gap: 12px; align-items: center;">
-            <label  style="font-size: 1.5em; font-weight: bold;">Title:</label>
+            <label  style="font-size: 1.5em; font-weight: bold;">TITEL:</label>
             <input type="text" id="inputField1" value="DE" style="background-color: #fea400; width: 80px; height: 58px; font-size: 1.1em; padding: 0 10px;" />
             <input type="text" id="inputField2" value="Slimste Mens" style="background-color: #fea400; width: 224px; height: 58px; font-size: 1.1em; padding: 0 10px;" />
             <input type="text" id="inputField3" value="TER WERELD" style="background-color: #fea400;width: 180px; height: 58px; font-size: 1.1em; padding: 0 10px;" />

@@ -51,6 +51,7 @@ document.getElementById("addTeamBtn").onclick = function () {
             localStorage.setItem("team" + i + "Score", 60);
             localStorage.setItem("visibleTeam" + i, "1");
             localStorage.setItem(`team${i}AddCount`, '0');
+            localStorage.removeItem(`team${i}Started`);
             renderTeams();
             break;
         }
@@ -147,6 +148,40 @@ function resetAllTeamAddCounts() {
     }
 }
 
+function resetAllTeamStartFlags() {
+    for (let i = 1; i <= MAX_TEAMS; i++) {
+        localStorage.removeItem(`team${i}Started`);
+    }
+    localStorage.removeItem('startCheckTurn');
+    localStorage.removeItem('pendingStartTeamId');
+}
+
+function resetAllTeamDoneFlags() {
+    for (let i = 1; i <= MAX_TEAMS; i++) {
+        const key = `team${i}Done`;
+        if (localStorage.getItem(key) !== null) {
+            localStorage.setItem(key, '0');
+        }
+    }
+}
+
+function setExclusiveTeamStarted(teamId) {
+    for (let i = 1; i <= MAX_TEAMS; i++) {
+        if (i !== teamId) {
+            localStorage.removeItem(`team${i}Started`);
+        }
+    }
+    localStorage.setItem(`team${teamId}Started`, '1');
+}
+
+function getCurrentTurnKey() {
+    const roundIndex = parseInt(localStorage.getItem('roundIndex'));
+    const turnIndex = parseInt(localStorage.getItem('nextTurnCount'));
+    const roundPart = isNaN(roundIndex) ? 'R-1' : `R${roundIndex}`;
+    const turnPart = isNaN(turnIndex) ? 'T1' : `T${turnIndex}`;
+    return `${roundPart}|${turnPart}`;
+}
+
 function applyNextTurnState() {
     localStorage.setItem('collProgress', '0');
     let firstAvailableIndex = -1;
@@ -176,6 +211,26 @@ function renderTeams() {
     let teams = []; // Initialize teams array
     const roundLabel = document.getElementById('roundLabel');
     const round = roundLabel ? roundLabel.textContent.trim() : '';
+    const isEditModeRound = round === 'EDIT MODE';
+    const THREE_SIX_NINE_MAX_TURNS = 12;
+    let nextTurnCountValue = parseInt(localStorage.getItem('nextTurnCount') || '1', 10);
+    if (isNaN(nextTurnCountValue) || nextTurnCountValue < 1) {
+        nextTurnCountValue = 1;
+    }
+    const maxTeams = MAX_TEAMS;
+    let visibleTeamCount = 0;
+    for (let i = 1; i <= maxTeams; i++) {
+        let name = localStorage.getItem("nameTeam" + i);
+        let visible = localStorage.getItem("visibleTeam" + i) !== "0";
+        if (name && visible) visibleTeamCount++;
+    }
+    const reachedThreeSixNineTurnCap = round === '3-6-9' && nextTurnCountValue >= THREE_SIX_NINE_MAX_TURNS;
+    const otherRoundsTurnCap = (!isEditModeRound && round !== '3-6-9' && round !== 'FINALE')
+        ? Math.max(1, visibleTeamCount + 1)
+        : Number.POSITIVE_INFINITY;
+    const reachedOtherRoundTurnCap = otherRoundsTurnCap !== Number.POSITIVE_INFINITY && nextTurnCountValue >= otherRoundsTurnCap;
+    const pendingTeamNames = [];
+    const visibleTeamsForCap = [];
     // For COLLEC. GEH., always use nextEnabledTeamIndex from STOP logic, but ensure teams are sorted by score
     let enabledTeamIndex = -1;
     if (round === 'COLLEC. GEH.') {
@@ -199,9 +254,27 @@ function renderTeams() {
     const quizStarted = localStorage.getItem('quizStarted') === '1' || localStorage.getItem('quizWasStarted') === '1';
     let currentTeam = parseInt(localStorage.getItem('currentTeam'));
     let nextEnabledTeamIndex = parseInt(localStorage.getItem('nextEnabledTeamIndex'));
-    if (quizStarted && round === '3-6-9' && currentTeam === -1) {
+    const pendingStartTeamIdRaw = localStorage.getItem('pendingStartTeamId');
+    let pendingStartTeamId = pendingStartTeamIdRaw ? parseInt(pendingStartTeamIdRaw) : -1;
+    if (quizStarted && round === '3-6-9' && currentTeam === -1 && !reachedThreeSixNineTurnCap) {
         localStorage.setItem('nextEnabledTeamIndex', 0);
         nextEnabledTeamIndex = 0;
+    }
+    if (reachedThreeSixNineTurnCap) {
+        localStorage.setItem('nextEnabledTeamIndex', -1);
+        nextEnabledTeamIndex = -1;
+        localStorage.removeItem('pendingStartTeamId');
+        pendingStartTeamId = -1;
+        localStorage.setItem('currentTeam', -1);
+        currentTeam = -1;
+    }
+    if (!isEditModeRound && round !== '3-6-9' && round !== 'FINALE' && reachedOtherRoundTurnCap) {
+        localStorage.setItem('nextEnabledTeamIndex', -1);
+        nextEnabledTeamIndex = -1;
+        localStorage.removeItem('pendingStartTeamId');
+        pendingStartTeamId = -1;
+        localStorage.setItem('currentTeam', -1);
+        currentTeam = -1;
     }
     // Add ENTER key support for add team input
     var addTeamName = document.getElementById('addTeamName');
@@ -214,13 +287,6 @@ function renderTeams() {
         };
     }
     // Calculate teamCount before any usage
-    let maxTeams = 9;
-    let visibleTeamCount = 0;
-    for (let i = 1; i <= maxTeams; i++) {
-        let name = localStorage.getItem("nameTeam" + i);
-        let visible = localStorage.getItem("visibleTeam" + i) !== "0";
-        if (name && visible) visibleTeamCount++;
-    }
     // Show/hide add team input/button div based on visible team count
     var inputButtonDiv = document.getElementById('addTeamContainer');
     if (inputButtonDiv) {
@@ -298,6 +364,16 @@ function renderTeams() {
             wrapper.style.alignItems = 'center';
             wrapper.style.gap = '10px';
 
+            const labelEl = document.createElement('span');
+            labelEl.id = 'nextTurnCounterLabel';
+            labelEl.textContent = 'BEURT #';
+            labelEl.style.fontSize = '1.3em';
+            labelEl.style.fontWeight = 'bold';
+            labelEl.style.letterSpacing = '1px';
+            labelEl.style.color = '#fff';
+            labelEl.style.padding = '0 10px';
+            labelEl.style.textTransform = 'uppercase';
+
             counterEl = document.createElement('span');
             counterEl.id = 'nextTurnCounterDisplay';
             counterEl.style.fontSize = '2em';
@@ -363,6 +439,7 @@ function renderTeams() {
             spinContainer.appendChild(upBtn);
             spinContainer.appendChild(downBtn);
 
+            wrapper.appendChild(labelEl);
             wrapper.appendChild(counterEl);
             wrapper.appendChild(spinContainer);
             nextTurnBtn.insertAdjacentElement('afterend', wrapper);
@@ -376,21 +453,135 @@ function renderTeams() {
             localStorage.setItem('nextTurnCount', '1');
         }
         const counterEl = ensureNextTurnCounterElement();
+        const roundLabelNode = document.getElementById('roundLabel');
+        const currentRound = roundLabelNode ? roundLabelNode.textContent.trim() : '';
+        const inEditMode = currentRound === 'EDIT MODE';
+        let displayValue = counterValue;
+        if (!inEditMode) {
+            if (currentRound === '3-6-9') {
+                displayValue = Math.min(counterValue, THREE_SIX_NINE_MAX_TURNS);
+            } else {
+                const cap = Math.max(1, visibleTeamCount);
+                if (currentRound !== '') {
+                    displayValue = Math.min(counterValue, cap);
+                }
+            }
+        }
         if (counterEl) {
-            counterEl.textContent = `${counterValue}`;
+            counterEl.textContent = `${displayValue}`;
+            const isMultipleOfThree = displayValue % 3 === 0;
+            counterEl.style.color = isMultipleOfThree ? '#002288' : '#fff'; // dark blue
+        }
+        const counterWrapper = document.getElementById('nextTurnCounterWrapper');
+        if (counterWrapper) {
+            counterWrapper.style.display = 'inline-flex';
         }
         const spinContainer = document.getElementById('nextTurnCounterSpin');
-        const roundLabelNode = document.getElementById('roundLabel');
-        const inEditMode = roundLabelNode && roundLabelNode.textContent.trim() === 'EDIT MODE';
         if (spinContainer) {
             spinContainer.style.display = inEditMode ? 'flex' : 'none';
         }
+    };
+    const runStandardNextTurnSequence = () => {
+        let currentCount = parseInt(localStorage.getItem('nextTurnCount'));
+        if (isNaN(currentCount) || currentCount < 1) {
+            currentCount = 1;
+        }
+        localStorage.setItem('nextTurnCount', String(currentCount + 1));
+        refreshNextTurnCounterDisplay();
+        localStorage.setItem('collProgress', '0');
+        localStorage.setItem('openDeurTwentyCount', '0');
+        localStorage.setItem('puzzelThirtyCount', '0');
+        localStorage.setItem('gallerijFifteenCount', '0');
+        localStorage.setItem('collecFiftyCount', '0');
+        if (typeof resetAllTeamStartFlags === 'function') {
+            resetAllTeamStartFlags();
+        } else {
+            for (let idx = 1; idx <= MAX_TEAMS; idx++) {
+                localStorage.removeItem(`team${idx}Started`);
+            }
+            localStorage.removeItem('startCheckTurn');
+            localStorage.removeItem('pendingStartTeamId');
+        }
+        const teamsSnapshot = [];
+        let firstAvailableIndex = -1;
+        for (let idx = 1; idx <= maxTeams; idx++) {
+            let name = localStorage.getItem("nameTeam" + idx);
+            if (!name) continue;
+            let scoreRaw = localStorage.getItem("team" + idx + "Score");
+            let score = 60;
+            if (scoreRaw !== null && !isNaN(Number(scoreRaw))) {
+                score = Number(scoreRaw);
+            }
+            let visible = localStorage.getItem("visibleTeam" + idx) !== "0";
+            teamsSnapshot.push({ i: idx, name, score, visible });
+            if (firstAvailableIndex === -1) firstAvailableIndex = idx - 1;
+        }
+        for (let idx = 1; idx <= maxTeams; idx++) {
+            localStorage.setItem(`team${idx}Done`, '0');
+        }
+        let autoStartTeamId = -1;
+        let lowestScore = Number.POSITIVE_INFINITY;
+        teamsSnapshot.forEach(team => {
+            if (!team.visible) return;
+            const hasCheck = localStorage.getItem(`team${team.i}Started`) === '1';
+            if (!hasCheck && team.score < lowestScore) {
+                lowestScore = team.score;
+                autoStartTeamId = team.i;
+            }
+        });
+        localStorage.setItem('currentTeam', -1);
+        if (autoStartTeamId !== -1) {
+            localStorage.setItem('nextEnabledTeamIndex', '-1');
+            localStorage.setItem('pendingStartTeamId', String(autoStartTeamId));
+        } else {
+            localStorage.removeItem('pendingStartTeamId');
+            localStorage.setItem('nextEnabledTeamIndex', firstAvailableIndex);
+        }
+        if (window.renderTeams) window.renderTeams();
+    };
+
+    const maybeAdvanceStageRoundIfAllTeamsDone = () => {
+        const stageRounds = ['OPEN DEUR', 'PUZZEL', 'GALLERIJ', 'COLLEC. GEH.', 'FINALE'];
+        if (!stageRounds.includes(round)) return false;
+        let hasVisibleTeam = false;
+        for (let idx = 1; idx <= MAX_TEAMS; idx++) {
+            const name = localStorage.getItem(`nameTeam${idx}`);
+            const visible = localStorage.getItem(`visibleTeam${idx}`) !== '0';
+            if (!name || !visible) continue;
+            hasVisibleTeam = true;
+            if (localStorage.getItem(`team${idx}Done`) !== '1') {
+                return false;
+            }
+        }
+        if (!hasVisibleTeam) return false;
+        if (round === 'OPEN DEUR') {
+            localStorage.setItem('openDeurTwentyCount', '0');
+        } else if (round === 'PUZZEL') {
+            localStorage.setItem('puzzelThirtyCount', '0');
+        } else if (round === 'GALLERIJ') {
+            localStorage.setItem('gallerijFifteenCount', '0');
+        } else if (round === 'COLLEC. GEH.') {
+            localStorage.setItem('collProgress', '0');
+            localStorage.setItem('collecFiftyCount', '0');
+        } else if (round === 'FINALE') {
+            localStorage.setItem('nextTurnCount', '1');
+            localStorage.setItem('openDeurTwentyCount', '0');
+            localStorage.setItem('puzzelThirtyCount', '0');
+            localStorage.setItem('gallerijFifteenCount', '0');
+            localStorage.setItem('collecFiftyCount', '0');
+        }
+        localStorage.setItem('currentTeam', -1);
+        localStorage.setItem('nextEnabledTeamIndex', '-1');
+        localStorage.removeItem('pendingStartTeamId');
+        runStandardNextTurnSequence();
+        return true;
     };
     // roundLabel and round already declared above
     // NEXT ROUND
     if (nextRoundBtn) {
         nextRoundBtn.style.display = 'inline-block';
-        if (round === 'EDIT MODE') {
+        const lockNextInFinale = round === 'FINALE';
+        if (round === 'EDIT MODE' || lockNextInFinale) {
             nextRoundBtn.disabled = true;
             nextRoundBtn.style.backgroundColor = '#222222';
             nextRoundBtn.style.color = 'white';
@@ -402,24 +593,32 @@ function renderTeams() {
             nextRoundBtn.style.opacity = nextRoundBtn.disabled ? '0.5' : '1';
         }
         nextRoundBtn.onclick = function () {
-            if (!nextRoundBtn.disabled) {
-                setTimeout(() => {
-                    if (window.executeNextTurnLogic) {
-                        window.executeNextTurnLogic();
-                    }
-                    // Reset all team add counters when round changes
-                    if (typeof resetAllTeamAddCounts === 'function') {
-                        resetAllTeamAddCounts();
-                    }
-                    localStorage.setItem('nextTurnCount', '1');
-                    refreshNextTurnCounterDisplay();
-                }, 0);
+            if (nextRoundBtn.disabled) {
+                return;
             }
+            setTimeout(() => {
+                if (window.executeNextTurnLogic) {
+                    window.executeNextTurnLogic();
+                }
+                // Reset all team add counters when round changes
+                if (typeof resetAllTeamAddCounts === 'function') {
+                    resetAllTeamAddCounts();
+                }
+                if (typeof resetAllTeamStartFlags === 'function') {
+                    resetAllTeamStartFlags();
+                }
+                if (typeof resetAllTeamDoneFlags === 'function') {
+                    resetAllTeamDoneFlags();
+                }
+                localStorage.setItem('nextTurnCount', '1');
+                refreshNextTurnCounterDisplay();
+            }, 0);
         };
     }
     // PREV ROUND
     if (prevRoundBtn) {
-        if (round === 'EDIT MODE') {
+        const lockPrevInFirstRound = round === '3-6-9' || round === 'EDIT MODE';
+        if (lockPrevInFirstRound) {
             prevRoundBtn.disabled = true;
             prevRoundBtn.style.backgroundColor = '#222222';
             prevRoundBtn.style.color = 'white';
@@ -431,34 +630,33 @@ function renderTeams() {
             prevRoundBtn.style.opacity = '1';
         }
         prevRoundBtn.onclick = function () {
-            if (!prevRoundBtn.disabled) {
-                setTimeout(() => {
-                    if (window.executeNextTurnLogic) {
-                        window.executeNextTurnLogic();
-                    }
-                    // Reset all team add counters when round changes
-                    if (typeof resetAllTeamAddCounts === 'function') {
-                        resetAllTeamAddCounts();
-                    }
-                    localStorage.setItem('nextTurnCount', '1');
-                    refreshNextTurnCounterDisplay();
-                }, 0);
+            if (prevRoundBtn.disabled) {
+                return;
             }
+            setTimeout(() => {
+                if (window.executeNextTurnLogic) {
+                    window.executeNextTurnLogic();
+                }
+                // Reset all team add counters when round changes
+                if (typeof resetAllTeamAddCounts === 'function') {
+                    resetAllTeamAddCounts();
+                }
+                if (typeof resetAllTeamStartFlags === 'function') {
+                    resetAllTeamStartFlags();
+                }
+                if (typeof resetAllTeamDoneFlags === 'function') {
+                    resetAllTeamDoneFlags();
+                }
+                localStorage.setItem('nextTurnCount', '1');
+                refreshNextTurnCounterDisplay();
+            }, 0);
         };
     }
     // NEXT TURN
     if (nextTurnBtn) {
-        if (round === 'EDIT MODE') {
-            nextTurnBtn.disabled = true;
-            nextTurnBtn.style.backgroundColor = '#222222';
-            nextTurnBtn.style.color = 'white';
-            nextTurnBtn.style.opacity = '1';
-        } else {
-            nextTurnBtn.disabled = false;
-            nextTurnBtn.style.backgroundColor = 'purple';
-            nextTurnBtn.style.color = 'white';
-            nextTurnBtn.style.opacity = '1';
-        }
+        nextTurnBtn.style.display = 'none';
+        const counterWrapper = document.getElementById('nextTurnCounterWrapper');
+        if (counterWrapper) counterWrapper.style.display = 'none';
     }
     refreshNextTurnCounterDisplay();
     // Attach listeners to save inputField1, inputField2, inputField3 to localStorage
@@ -521,6 +719,7 @@ function renderTeams() {
         `;
         document.head.appendChild(style);
     }
+    const showNameOnlyBeforeStart = !quizStarted;
     const headerRow = document.createElement("div");
     headerRow.className = "team-header-row";
     headerRow.innerHTML = `
@@ -554,7 +753,7 @@ function renderTeams() {
             .col-name { min-width: 150px; max-width: 340px; flex: 2 1 280px; text-align: left; }
             .col-name-header { margin-left: 10px; }
             .col-actions {min-width: 120px; flex: 2 1 120px; flex-wrap: nowrap; justify-content: flex-start; margin-left: 60px; gap: 18px; }
-            .col-score-label {margin-left: 326px; font-size: 1em; letter-spacing: 1px; }
+            .col-score-label {margin-left: 346px; font-size: 1em; letter-spacing: 1px; }
             .team-row-inner span.team-add-counter {
                 background: rgba(255,255,255,0.12);
                 border-radius: 14px;
@@ -571,6 +770,16 @@ function renderTeams() {
                 justify-content: center;
                 font-weight: 700;
                 letter-spacing: 0.03em;
+            }
+            .team-row-inner span.team-start-check {
+                font-size: 2em;
+                color: darkred;
+                margin-left: 0px;
+                min-width: 44px;
+                min-height: 65px;
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
             }
             #editRoundBtn {
                 background: #fee500ff;
@@ -592,8 +801,8 @@ function renderTeams() {
         <div class='team-header-row-inner'>
             <span class='col-visible'>&#128065;</span>
             <span class='col-name'><span class="col-name-header">TEAM NAME</span></span>
-            <span class='col-actions' style="margin-left: 20px;">&nbsp;ACTIONS
-                <button id="editRoundBtn">EDIT</button>
+            <span class='col-actions' style="margin-left: 20px; ${showNameOnlyBeforeStart ? 'display:none;' : ''}">ACTIES
+                <button id="editRoundBtn">BEWERK</button>
                 <span class='col-score-label'>SCORE</span>
             </span>
         </div>
@@ -603,6 +812,8 @@ function renderTeams() {
     setTimeout(() => {
         const editBtn = document.getElementById('editRoundBtn');
         if (editBtn) {
+            const quizStartedFlag = localStorage.getItem('quizStarted') === '1' || localStorage.getItem('quizWasStarted') === '1';
+            editBtn.style.display = quizStartedFlag ? 'inline-block' : 'none';
             editBtn.onclick = function () {
                 const roundLabel = document.getElementById('roundLabel');
                 let roundNames = ["3-6-9", "OPEN DEUR", "PUZZEL", "GALLERIJ", "COLLEC. GEH.", "FINALE"];
@@ -613,6 +824,12 @@ function renderTeams() {
                     localStorage.setItem('editMode', '1');
                     if (roundLabel) roundLabel.textContent = 'EDIT MODE';
                 } else {
+                    document.querySelectorAll('input[id^="visibleTeam"]').forEach(input => {
+                        const teamId = parseInt(input.id.replace('visibleTeam', ''));
+                        if (!isNaN(teamId)) {
+                            localStorage.setItem(`visibleTeam${teamId}`, input.checked ? '1' : '0');
+                        }
+                    });
                     let lastRoundIndex = parseInt(localStorage.getItem('lastRoundIndex'));
                     if (!isNaN(lastRoundIndex)) {
                         localStorage.setItem('editMode', '0');
@@ -623,14 +840,14 @@ function renderTeams() {
                     const editBtn = document.getElementById('editRoundBtn');
                     const roundLabel = document.getElementById('roundLabel');
                     let currentRound = roundLabel ? roundLabel.textContent.trim() : '';
-                    if (editBtn) editBtn.textContent = (currentRound === 'EDIT MODE') ? 'STOP EDITING' : 'EDIT';
+                    if (editBtn) editBtn.textContent = (currentRound === 'EDIT MODE') ? 'STOP BEWERKEN' : 'BEWERK';
                 }, 10);
                 renderTeams();
             };
             // Set button text on initial render to match mode
             const roundLabel = document.getElementById('roundLabel');
             const inEditMode = roundLabel && roundLabel.textContent.trim() === 'EDIT MODE';
-            editBtn.textContent = inEditMode ? 'STOP EDITING' : 'EDIT';
+            editBtn.textContent = inEditMode ? 'STOP BEWERKEN' : 'BEWERK';
         }
     }, 0);
     // Add spacing between header and rows
@@ -639,6 +856,7 @@ function renderTeams() {
     container.appendChild(spacer);
     // let maxTeams = 9; // Already declared at top of function
     // teams already declared above
+    const controlsHiddenStyle = showNameOnlyBeforeStart ? 'display:none;' : '';
     for (let i = 1; i <= maxTeams; i++) {
         let name = localStorage.getItem("nameTeam" + i);
         let visible = localStorage.getItem("visibleTeam" + i) !== "0";
@@ -656,14 +874,106 @@ function renderTeams() {
             visible
         });
     }
+    const getFinLowestEligible = () => {
+        let lowestScoreValue = Number.POSITIVE_INFINITY;
+        let lowestTeamId = -1;
+        teams.forEach(team => {
+            if (!team.visible) return;
+            const done = localStorage.getItem(`team${team.i}Done`) === '1';
+            if (done) return;
+            if (team.score < lowestScoreValue) {
+                lowestScoreValue = team.score;
+                lowestTeamId = team.i;
+            }
+        });
+        return lowestTeamId;
+    };
+    let finaleLowestScoreTeamId = round === 'FINALE' ? getFinLowestEligible() : -1;
+    if (round === '3-6-9' && !reachedThreeSixNineTurnCap) {
+        const anyTeamMarked = teams.some(team => localStorage.getItem(`team${team.i}Started`) === '1');
+        if (!anyTeamMarked) {
+            const firstVisibleTeam = teams.find(team => team.visible);
+            if (firstVisibleTeam) {
+                if (typeof setExclusiveTeamStarted === 'function') {
+                    setExclusiveTeamStarted(firstVisibleTeam.i);
+                } else {
+                    for (let idx = 1; idx <= MAX_TEAMS; idx++) {
+                        if (idx === firstVisibleTeam.i) {
+                            localStorage.setItem(`team${idx}Started`, '1');
+                        } else {
+                            localStorage.removeItem(`team${idx}Started`);
+                        }
+                    }
+                }
+                localStorage.setItem('startCheckTurn', getCurrentTurnKey());
+                if (currentTeam === -1 && pendingStartTeamId === -1) {
+                    localStorage.setItem('pendingStartTeamId', String(firstVisibleTeam.i));
+                    pendingStartTeamId = firstVisibleTeam.i;
+                    localStorage.setItem('nextEnabledTeamIndex', -1);
+                }
+            }
+        }
+    }
+    if (round !== 'OPEN DEUR') {
+        localStorage.setItem('openDeurTwentyCount', '0');
+    } else if (localStorage.getItem('openDeurTwentyCount') === null) {
+        localStorage.setItem('openDeurTwentyCount', '0');
+    }
+    if (round !== 'PUZZEL') {
+        localStorage.setItem('puzzelThirtyCount', '0');
+    } else if (localStorage.getItem('puzzelThirtyCount') === null) {
+        localStorage.setItem('puzzelThirtyCount', '0');
+    }
+    if (round !== 'GALLERIJ') {
+        localStorage.setItem('gallerijFifteenCount', '0');
+    } else if (localStorage.getItem('gallerijFifteenCount') === null) {
+        localStorage.setItem('gallerijFifteenCount', '0');
+    }
+    if (round !== 'COLLEC. GEH.') {
+        localStorage.setItem('collecFiftyCount', '0');
+    } else if (localStorage.getItem('collecFiftyCount') === null) {
+        localStorage.setItem('collecFiftyCount', '0');
+    }
+    if (round !== 'PUZZEL') {
+        localStorage.setItem('puzzelThirtyCount', '0');
+    } else if (localStorage.getItem('puzzelThirtyCount') === null) {
+        localStorage.setItem('puzzelThirtyCount', '0');
+    }
+    if (round === 'FINALE') {
+        const sortedByScoreDesc = [...teams].sort((a, b) => b.score - a.score);
+        const topFinalists = sortedByScoreDesc.slice(0, 2);
+        const finalistIds = new Set(topFinalists.map(team => team.i));
+        teams.forEach(team => {
+            const shouldBeVisible = finalistIds.has(team.i);
+            const visibilityKey = `visibleTeam${team.i}`;
+            const storedVisible = localStorage.getItem(visibilityKey) !== '0';
+            if (shouldBeVisible !== storedVisible) {
+                localStorage.setItem(visibilityKey, shouldBeVisible ? '1' : '0');
+            }
+            team.visible = shouldBeVisible;
+        });
+    }
     // Always sort teams by score (lowest first) in COLLEC. GEH. round
-    if (round === 'COLLEC. GEH.') {
-        teams.sort((a, b) => a.score - b.score);
-    } else if (round !== '3-6-9') {
-        teams.sort((a, b) => a.score - b.score);
+    if (!isEditModeRound) {
+        if (round === 'COLLEC. GEH.') {
+            teams.sort((a, b) => a.score - b.score);
+        } else if (round === 'FINALE') {
+            teams.sort((a, b) => b.score - a.score);
+        } else if (round !== '3-6-9') {
+            teams.sort((a, b) => a.score - b.score);
+        }
     }
     // Render sorted teams
     const newRowElements = [];
+    const isMultipleOfThreeTurn = nextTurnCountValue !== 0 && !isNaN(nextTurnCountValue) && (nextTurnCountValue % 3 === 0);
+    let threeSixNineBonusTargetId = parseInt(localStorage.getItem('threeSixNineBonusTargetId') || '-1', 10);
+    if (isNaN(threeSixNineBonusTargetId)) threeSixNineBonusTargetId = -1;
+    if (round !== '3-6-9' || !isMultipleOfThreeTurn) {
+        if (threeSixNineBonusTargetId !== -1) {
+            localStorage.setItem('threeSixNineBonusTargetId', '-1');
+        }
+        threeSixNineBonusTargetId = -1;
+    }
     teams.forEach((team, rowIndex) => {
         let i = team.i;
         let name = team.name;
@@ -671,6 +981,7 @@ function renderTeams() {
         let visible = team.visible;
         let done = localStorage.getItem(`team${i}Done`) === '1';
         let addCount = getTeamAddCount(i);
+        const teamStarted = localStorage.getItem(`team${i}Started`) === '1';
         let roundLabel = document.getElementById('roundLabel');
         let round = roundLabel ? roundLabel.textContent.trim() : '';
         const inEditMode = (round === 'EDIT MODE');
@@ -682,23 +993,53 @@ function renderTeams() {
         } else if (inEditMode) {
             enableRow = true;
         } else if (round === '3-6-9') {
-            enableRow = true;
+            if (reachedThreeSixNineTurnCap) {
+                enableRow = false;
+            } else if (currentTeam !== -1) {
+                enableRow = (currentTeam === (i - 1));
+            } else if (pendingStartTeamId !== -1) {
+                enableRow = (pendingStartTeamId === i);
+            } else {
+                enableRow = (rowIndex === 0);
+            }
+        } else if (round === 'FINALE') {
+            if (currentTeam !== -1) {
+                enableRow = (currentTeam === (i - 1));
+            } else if (pendingStartTeamId !== -1) {
+                enableRow = (pendingStartTeamId === i);
+            } else if (finaleLowestScoreTeamId !== -1) {
+                enableRow = (team.i === finaleLowestScoreTeamId);
+            } else if (nextEnabledTeamIndex !== -1) {
+                enableRow = (rowIndex === nextEnabledTeamIndex);
+            } else {
+                enableRow = false;
+            }
+        } else if (!inEditMode && reachedOtherRoundTurnCap) {
+            enableRow = false;
         } else if (currentTeam !== -1) {
             enableRow = (currentTeam === (i - 1));
+        } else if (pendingStartTeamId !== -1) {
+            enableRow = (pendingStartTeamId === i);
         } else if (nextEnabledTeamIndex !== -1) {
             enableRow = (rowIndex === nextEnabledTeamIndex);
         } else {
             enableRow = false;
         }
-        const isActiveTeam = inEditMode ? true : currentTeam === (i - 1);
+        const isActiveTeam = inEditMode ? true : (round === '3-6-9' ? false : currentTeam === (i - 1));
         let disableStartStop = inEditMode;
-        const enforceSingleStart = !inEditMode && currentTeam !== -1 && currentTeam !== (i - 1);
+        const hasActiveTeam = !inEditMode && currentTeam !== -1;
+        const hasPendingStart = !inEditMode && !hasActiveTeam && pendingStartTeamId !== -1;
+        const enforceSingleStart = !inEditMode && ((hasActiveTeam && currentTeam !== (i - 1)) || (hasPendingStart && pendingStartTeamId !== i));
         // COLLEC. GEH. progressive logic
         let collProgress = 0;
         if (round === 'COLLEC. GEH.') {
             collProgress = parseInt(localStorage.getItem('collProgress') || '0');
         }
-        const canScoreThisRow = inEditMode ? true : isActiveTeam;
+        const canScoreThisRow = inEditMode ? true : (round === '3-6-9' ? enableRow : isActiveTeam);
+        const isThreeSixNineRedirectTarget = threeSixNineBonusTargetId === i;
+        const hasRedirectTarget = threeSixNineBonusTargetId !== -1;
+        const baseThreeSixNineWindow = teamStarted && !hasRedirectTarget;
+        const threeSixNineScoreWindow = !inEditMode && round === '3-6-9' && isMultipleOfThreeTurn && (baseThreeSixNineWindow || isThreeSixNineRedirectTarget);
         // Button enable logic per round
         let enable10 = false;
         let enable20 = false;
@@ -714,36 +1055,66 @@ function renderTeams() {
             enable30 = canScoreThisRow && collProgress === 2;
             enable40 = canScoreThisRow && collProgress === 3;
             enable50 = canScoreThisRow && collProgress === 4;
-        } else if (canScoreThisRow) {
-            if (round === '3-6-9' || round === 'GALLERIJ') {
-                enable10 = true;
-            } else if (round === 'OPEN DEUR') {
-                enable20 = true;
-            } else if (round === 'PUZZEL') {
-                enable30 = true;
-            } else if (round === 'FINALE') {
-                enableSub = true;
+        } else {
+            if (canScoreThisRow) {
+                if (round === 'GALLERIJ') {
+                    enable10 = true;
+                } else if (round === 'OPEN DEUR') {
+                    enable20 = true;
+                } else if (round === 'PUZZEL') {
+                    enable30 = true;
+                }
             }
         }
+        const allowFinalePenaltyOnDoneRow = round === 'FINALE' && !inEditMode;
+        if (round === 'FINALE') {
+            if (inEditMode) {
+                enableSub = true;
+            } else {
+                const activeTeamIndex = currentTeam;
+                enableSub = visible && activeTeamIndex !== -1 && activeTeamIndex !== (i - 1);
+            }
+        }
+        if (threeSixNineScoreWindow) {
+            enable10 = true;
+        }
         const enable15 = inEditMode ? true : (round === 'GALLERIJ' && canScoreThisRow);
+        const shouldDisableStart = disableStartStop || rowLocked || !enableRow || enforceSingleStart || threeSixNineScoreWindow;
+        const shouldDisableSkip = disableStartStop || rowLocked || !enableRow || enforceSingleStart;
+        const startBtnBg = shouldDisableStart ? '#222222' : (round === '3-6-9' ? '#007a26' : (isActiveTeam ? 'red' : enableRow ? 'darkblue' : '#222222'));
+        const showSkipButton = !inEditMode && round === '3-6-9' && !showNameOnlyBeforeStart;
+        const skipBtnBg = shouldDisableSkip ? '#222222' : '#8b1a1a';
         let row = document.createElement("div");
         row.dataset.teamId = String(i);
         row.className = "team-row " + (rowIndex % 2 === 0 ? "row-odd" : "row-even");
+        const startButtonLabel = inEditMode
+            ? ''
+            : (round === '3-6-9' ? '&#10003;' : (isActiveTeam ? 'STOP' : 'START'));
+        const startButtonWidth = (!inEditMode && round === '3-6-9') ? 60 : 126;
+        const showStartCheck = round !== 'FINALE' && !showNameOnlyBeforeStart;
+        const startCheckColor = round === '3-6-9' ? '#008f2a' : 'darkred';
+        const startCheckMarkup = showStartCheck ? `<span class='team-start-check' id="teamStartCheck${i}" style="color: ${startCheckColor};">${teamStarted ? '&#10003;' : ''}</span>` : '';
+
+        const visibilityLocked = !inEditMode;
+        const visibilityLockAttrs = visibilityLocked ? 'data-locked="true" tabindex="-1" aria-disabled="true"' : '';
+        const visibilityAccentColor = inEditMode ? '#2222aa' : 'darkorange';
+        const visibilityPointerStyle = visibilityLocked ? 'pointer-events: none;' : '';
         row.innerHTML = `
             <div class='team-row-inner' style="margin-bottom: -4px;">
-                <span class='col-visible'><input type="checkbox" id="visibleTeam${i}" ${visible ? "checked" : ""} style="width: 38px; height: 38px; transform: scale(1.8); accent-color: #2222aa; margin-right: 24px;"/></span>
+            <span class='col-visible'><input type="checkbox" id="visibleTeam${i}" ${visible ? "checked" : ""} ${visibilityLockAttrs} style="width: 38px; height: 38px; transform: scale(1.8); accent-color: ${visibilityAccentColor}; margin-right: 24px; ${visibilityPointerStyle}"/></span>
                 <span class='col-name'><input id="nameTeam${i}" value="${name}" class="${rowLocked ? 'stopped-team-name' : ''}" style="background-color: ${rowLocked ? '#222222' : '#fea400'}; color: black; font-size: 1.3em; padding: 14px 10px; min-width: 180px; max-width: 320px; min-height: 65px; width: 100%;" ${(round !== 'EDIT MODE') ? 'disabled' : ''}/></span>
-                <span class='col-buttons'>
-                    <button id="startTeam${i}" style="background-color: ${(disableStartStop || rowLocked || enforceSingleStart) ? '#222222' : isActiveTeam ? 'red' : enableRow ? 'darkblue' : '#222222'}; color: white; font-size: 1.3em; padding: 18px 10px; min-width: 120px; width: 120px; min-height: 60px; margin-left: 2px; margin-right: 6px;" ${(disableStartStop || rowLocked || !enableRow || enforceSingleStart) ? 'disabled' : ''}>${inEditMode ? '' : (isActiveTeam ? 'STOP' : 'START')}</button>
-                    <button id="addTeam${i}_10" style="background-color: ${rowLocked ? '#222222' : (round === 'GALLERIJ' ? '#222222' : enable10 ? 'green' : '#222222')}; color: white; font-size: 1.3em; padding: 18px 8px; min-width: 70px; margin-right: 6px;" ${rowLocked || !enable10 || round === 'GALLERIJ' ? 'disabled' : ''}> +10 </button>
+                <span class='col-buttons' style="${controlsHiddenStyle}">
+                    <button id="startTeam${i}" style="background-color: ${startBtnBg}; color: white; font-size: 1.1em; padding: 18px 10px; min-width: ${startButtonWidth}px; width: ${startButtonWidth}px; min-height: 60px; margin-left: 2px; margin-right: 6px;" ${shouldDisableStart ? 'disabled' : ''}>${startButtonLabel}</button>
+                    ${showSkipButton ? `<button id="skipTeam${i}" style="background-color: ${skipBtnBg}; color: white; font-size: 1.1em; padding: 18px 10px; min-width: 60px; width: 60px; min-height: 60px; margin-right: 12px; border-radius: 8px;" ${shouldDisableSkip ? 'disabled' : ''}>&#10007;</button>` : ''}
+                    <button id="addTeam${i}_10" style="background-color: ${rowLocked ? '#222222' : (round === 'GALLERIJ' ? '#222222' : enable10 ? (round === '3-6-9' && reachedThreeSixNineTurnCap ? '#222222' : 'green') : '#222222')}; color: white; font-size: 1.3em; padding: 18px 8px; min-width: 70px; margin-right: 6px;" ${rowLocked || !enable10 || round === 'GALLERIJ' || (round === '3-6-9' && reachedThreeSixNineTurnCap) ? 'disabled' : ''}> +10 </button>
                     <button id="addTeam${i}_20" style="background-color: ${rowLocked ? '#222222' : enable20 ? 'green' : '#222222'}; color: white; font-size: 1.3em; padding: 18px 8px; min-width: 70px; margin-right: 6px;" ${rowLocked || !enable20 ? 'disabled' : ''}> +20 </button>
                     <button id="addTeam${i}_30" style="background-color: ${rowLocked ? '#222222' : enable30 ? 'green' : '#222222'}; color: white; font-size: 1.3em; padding: 18px 8px; min-width: 70px; margin-right: 6px;" ${rowLocked || !enable30 ? 'disabled' : ''}> +30 </button>
                     <button id="addTeam${i}_40" style="background-color: ${rowLocked ? '#222222' : enable40 ? 'green' : '#222222'}; color: white; font-size: 1.3em; padding: 18px 8px; min-width: 70px; margin-right: 6px;" ${rowLocked || !enable40 ? 'disabled' : ''}> +40 </button>
                     <button id="addTeam${i}_50" style="background-color: ${rowLocked ? '#222222' : enable50 ? 'green' : '#222222'}; color: white; font-size: 1.3em; padding: 18px 8px; min-width: 70px; margin-right: 6px;" ${rowLocked || !enable50 ? 'disabled' : ''}> +50 </button>
                     <button id="addTeam${i}_15" style="background-color: ${rowLocked ? '#222222' : (enable15 ? 'green' : '#222222')}; color: white; font-size: 1.3em; padding: 18px 8px; min-width: 70px; margin-right: 6px;" ${rowLocked || !enable15 ? 'disabled' : ''}> +15 </button>
-                    <button id="subTeam${i}" style="background-color: ${rowLocked ? '#222222' : enableSub ? 'darkred' : '#222222'}; color: white; font-size: 1.3em; padding: 18px 8px; min-width: 70px; margin-right: 8px;" ${rowLocked || !enableSub ? 'disabled' : ''}> -20 </button>
+                    <button id="subTeam${i}" style="background-color: ${(rowLocked && !allowFinalePenaltyOnDoneRow) ? '#222222' : (enableSub ? 'darkred' : '#222222')}; color: white; font-size: 1.3em; padding: 18px 8px; min-width: 70px; margin-right: 8px;" ${((rowLocked && !allowFinalePenaltyOnDoneRow) || !enableSub) ? 'disabled' : ''}> -20 </button>
                     <span class='score-input-wrapper'>
-                        <input id="scoreTeam${i}" min="0" max="999" type="number" value="${score}" class="${rowLocked ? 'score-input stopped-team-score' : 'score-input'}" style="width:100px; background-color: ${rowLocked ? '#222222' : 'darkorange'}; color: white;min-height: 65px; font-size: 1.3em; padding: 14px 12px; margin: 0 8px 0 0;" ${inEditMode ? '' : 'readonly'} />
+                        <input id="scoreTeam${i}" min="0" max="999" type="number" value="${score}" class="${rowLocked ? 'score-input stopped-team-score' : 'score-input'}" style="width:100px; background-color: ${rowLocked ? '#222222' : 'darkorange'}; color: white;min-height: 65px; font-size: 1.2em; padding: 14px 6px; margin: 0 8px 0 0;" ${inEditMode ? '' : 'readonly'} />
                         ${inEditMode ? `
                         <span class='score-spin-buttons'>
                             <button type="button" id="scoreSpinUp${i}" class="score-spin-button" aria-label="Increase score">+</button>
@@ -752,6 +1123,7 @@ function renderTeams() {
                         ` : ''}
                     </span>
                     ${inEditMode ? '' : `<span class='team-add-counter' id="teamAddCounter${i}">${addCount}</span>`}
+                    ${startCheckMarkup}
                 </span>
             </div>
         `;
@@ -788,6 +1160,22 @@ function renderTeams() {
                         collProgress = newProgress;
                         console.log(`[COLLEC. GEH.] ${label} clicked, collProgress after:`, localStorage.getItem('collProgress'));
                         updateCollButtons(newProgress);
+                        if (label === '+50') {
+                            let collecCount = parseInt(localStorage.getItem('collecFiftyCount'));
+                            if (isNaN(collecCount) || collecCount < 0) collecCount = 0;
+                            collecCount += 1;
+                            localStorage.setItem('collecFiftyCount', String(collecCount));
+                            if (collecCount >= 1) {
+                                localStorage.setItem('collecFiftyCount', '0');
+                                const currentTeamIdx = parseInt(localStorage.getItem('currentTeam'));
+                                if (!isNaN(currentTeamIdx) && currentTeamIdx !== -1) {
+                                    localStorage.setItem(`team${currentTeamIdx + 1}Done`, '1');
+                                }
+                                localStorage.setItem('currentTeam', -1);
+                                localStorage.setItem('nextEnabledTeamIndex', '-1');
+                                runStandardNextTurnSequence();
+                            }
+                        }
                     }
                 };
             }
@@ -827,52 +1215,22 @@ function renderTeams() {
     // NEXT TURN button resets COLLEC. GEH. progress and enables correct team row(s)
     // nextTurnBtn already declared in renderTeams
     if (nextTurnBtn) {
-        nextTurnBtn.onclick = function () {
-            let maxTeams = 9;
-            let currentCount = parseInt(localStorage.getItem('nextTurnCount'));
-            if (isNaN(currentCount) || currentCount < 1) {
-                currentCount = 1;
-            }
-            localStorage.setItem('nextTurnCount', String(currentCount + 1));
-            refreshNextTurnCounterDisplay();
-            if (window.renderTeams) window.renderTeams(); // Immediate UI update
-            // Reset COLLEC. GEH. progress
-            localStorage.setItem('collProgress', '0');
-            // Get current round
-            let roundLabel = document.getElementById('roundLabel');
-            let round = roundLabel ? roundLabel.textContent.trim() : '';
-            let teams = [];
-            let firstAvailableIndex = -1;
-            for (let i = 1; i <= maxTeams; i++) {
-                let name = localStorage.getItem("nameTeam" + i);
-                if (!name) continue;
-                let scoreRaw = localStorage.getItem("team" + i + "Score");
-                let score = 60;
-                if (scoreRaw !== null && !isNaN(Number(scoreRaw))) {
-                    score = Number(scoreRaw);
-                }
-                let visible = localStorage.getItem("visibleTeam" + i) !== "0";
-                teams.push({ i, name, score, visible });
-                if (firstAvailableIndex === -1) firstAvailableIndex = i - 1;
-            }
-            // Reset all team rows/buttons state
-            for (let i = 1; i <= maxTeams; i++) {
-                localStorage.setItem(`team${i}Done`, '0');
-                // Optionally, reset button states if needed (handled by renderTeams)
-            }
-            // Always set currentTeam to -1 so the counter does NOT start
-            localStorage.setItem('currentTeam', -1);
-            // Set nextEnabledTeamIndex to first available team
-            localStorage.setItem('nextEnabledTeamIndex', firstAvailableIndex);
-            if (window.renderTeams) window.renderTeams();
-        };
+        if (round === '3-6-9') {
+            nextTurnBtn.onclick = null;
+        } else {
+            nextTurnBtn.onclick = function () {
+                const confirmTurn = window.confirm('Bevestig: END TURN uitvoeren?');
+                if (!confirmTurn) return;
+                runStandardNextTurnSequence();
+            };
+        }
     }
     // Show/hide start quiz button based on team count (after teamCount is calculated)
     if (startQuizBtn) {
         startQuizBtn.style.display = visibleTeamCount >= 2 ? "inline-block" : "none";
         // Change button text if quiz started
         if (localStorage.getItem('quizStarted') === '1' || localStorage.getItem('quizWasStarted') === '1') {
-            startQuizBtn.textContent = 'OPEN QUIZ WINDOW';
+            startQuizBtn.textContent = 'OPEN QUIZ VENSTER';
         } else {
             startQuizBtn.textContent = 'START QUIZ';
         }
@@ -975,16 +1333,72 @@ function renderTeams() {
             localStorage.setItem(`nameTeam${i}`, this.value);
             localStorage.setItem('adminUpdate', Date.now());
         };
-        document.getElementById(`visibleTeam${i}`).onchange = function () {
-            localStorage.setItem(`visibleTeam${i}`, this.checked ? "1" : "0");
-        };
+        const visibleCheckbox = document.getElementById(`visibleTeam${i}`);
+        if (visibleCheckbox) {
+            visibleCheckbox.onchange = function () {
+                if (!isEditModeRound) {
+                    this.checked = localStorage.getItem(`visibleTeam${i}`) !== '0';
+                    return;
+                }
+                localStorage.setItem(`visibleTeam${i}`, this.checked ? "1" : "0");
+            };
+        }
         document.getElementById(`startTeam${i}`).onclick = function () {
+            const roundLabel = document.getElementById('roundLabel');
+            const round = roundLabel ? roundLabel.textContent.trim() : '';
             const currentTeam = parseInt(localStorage.getItem('currentTeam'));
+
+            const runStartLogic = (forceCheck = false) => {
+                localStorage.setItem('quizStarted', '1');
+                // In 3-6-9 round, never set currentTeam (prevents countdown)
+                if (round !== '3-6-9') {
+                    localStorage.setItem('currentTeam', i - 1);
+                } else {
+                    localStorage.setItem('currentTeam', -1);
+                }
+                localStorage.setItem('nextEnabledTeamIndex', -1);
+                if (round === '3-6-9') {
+                    localStorage.setItem('pendingStartTeamId', String(i));
+                } else {
+                    localStorage.removeItem('pendingStartTeamId');
+                }
+                const currentTurnKey = getCurrentTurnKey();
+                const lastAwardedTurn = localStorage.getItem('startCheckTurn');
+                if (round === '3-6-9' && forceCheck) {
+                    if (typeof setExclusiveTeamStarted === 'function') {
+                        setExclusiveTeamStarted(i);
+                    } else {
+                        resetAllTeamStartFlags();
+                        localStorage.setItem(`team${i}Started`, '1');
+                    }
+                    localStorage.setItem('startCheckTurn', currentTurnKey);
+                    let counterValue = parseInt(localStorage.getItem('nextTurnCount'));
+                    if (isNaN(counterValue) || counterValue < 1) {
+                        counterValue = 1;
+                    }
+                    localStorage.setItem('nextTurnCount', String(counterValue + 1));
+                    if (typeof refreshNextTurnCounterDisplay === 'function') {
+                        refreshNextTurnCounterDisplay();
+                    }
+                } else {
+                    if (localStorage.getItem(`team${i}Started`) !== '1') {
+                        if (forceCheck || lastAwardedTurn !== currentTurnKey) {
+                            localStorage.setItem(`team${i}Started`, '1');
+                            localStorage.setItem('startCheckTurn', currentTurnKey);
+                        }
+                    }
+                }
+                renderTeams();
+            };
+
+            if (round === '3-6-9') {
+                runStartLogic(true);
+                return;
+            }
+
             if (currentTeam === (i - 1)) {
                 // STOP logic: mark team as done
                 localStorage.setItem(`team${i}Done`, '1');
-                let roundLabel = document.getElementById('roundLabel');
-                let round = roundLabel ? roundLabel.textContent.trim() : '';
                 let nextIndex = -1;
                 // Always enable the row with the lowest score that is not done and is visible
                 let teams = [];
@@ -1007,19 +1421,78 @@ function renderTeams() {
                         break;
                     }
                 }
-                localStorage.setItem('nextEnabledTeamIndex', nextIndex);
+                if (round === 'FINALE') {
+                    const nextFinalist = teams.find(team => !team.done && team.visible);
+                    if (nextFinalist) {
+                        localStorage.setItem('nextEnabledTeamIndex', '-1');
+                        localStorage.setItem('pendingStartTeamId', String(nextFinalist.k));
+                    } else {
+                        localStorage.setItem('nextEnabledTeamIndex', nextIndex);
+                        localStorage.removeItem('pendingStartTeamId');
+                    }
+                } else {
+                    localStorage.setItem('nextEnabledTeamIndex', nextIndex);
+                }
                 // After STOP, set currentTeam to -1 so no team is active
                 localStorage.setItem('currentTeam', -1);
+                if (maybeAdvanceStageRoundIfAllTeamsDone()) {
+                    return;
+                }
                 renderTeams();
             } else {
-                // START logic: set currentTeam and update button
-                localStorage.setItem('quizStarted', '1');
-                localStorage.setItem('currentTeam', i - 1);
-                // Clear nextEnabledTeamIndex after starting
-                localStorage.setItem('nextEnabledTeamIndex', -1);
-                renderTeams();
+                runStartLogic();
             }
         };
+        const skipBtn = document.getElementById(`skipTeam${i}`);
+        if (skipBtn) {
+            skipBtn.onclick = function () {
+                const roundLabel = document.getElementById('roundLabel');
+                if (!roundLabel || roundLabel.textContent.trim() !== '3-6-9') {
+                    return;
+                }
+                const nextTurnValue = parseInt(localStorage.getItem('nextTurnCount') || '0', 10);
+                const skipDuringScoreWindow = !isNaN(nextTurnValue) && nextTurnValue !== 0 && (nextTurnValue % 3 === 0);
+                const redirectTargetId = parseInt(localStorage.getItem('threeSixNineBonusTargetId') || '-1', 10);
+                const rowHasCheck = localStorage.getItem(`team${i}Started`) === '1';
+                const isRedirectTargetRow = redirectTargetId === i;
+                const canRedirectScoreWindow = skipDuringScoreWindow && (rowHasCheck || isRedirectTargetRow);
+                const checkTeam = teams.find(team => localStorage.getItem(`team${team.i}Started`) === '1');
+                const totalTeams = teams.length;
+                if (!totalTeams) return;
+                const currentIndex = teams.findIndex(team => team.i === i);
+                if (currentIndex === -1) return;
+                let nextTeamId = -1;
+                for (let offset = 1; offset <= totalTeams; offset++) {
+                    const nextIndex = (currentIndex + offset) % totalTeams;
+                    const candidate = teams[nextIndex];
+                    if (candidate && candidate.visible) {
+                        nextTeamId = candidate.i;
+                        break;
+                    }
+                }
+                localStorage.setItem('currentTeam', -1);
+                localStorage.setItem('nextEnabledTeamIndex', -1);
+                if (nextTeamId !== -1 && nextTeamId !== i) {
+                    localStorage.setItem('pendingStartTeamId', String(nextTeamId));
+                } else {
+                    localStorage.removeItem('pendingStartTeamId');
+                }
+                if (canRedirectScoreWindow && nextTeamId !== -1 && nextTeamId !== i) {
+                    localStorage.setItem('threeSixNineBonusTargetId', String(nextTeamId));
+                }
+                if (checkTeam && nextTeamId === checkTeam.i) {
+                    let counterValue = parseInt(localStorage.getItem('nextTurnCount'));
+                    if (isNaN(counterValue) || counterValue < 1) {
+                        counterValue = 1;
+                    }
+                    localStorage.setItem('nextTurnCount', String(counterValue + 1));
+                    if (typeof refreshNextTurnCounterDisplay === 'function') {
+                        refreshNextTurnCounterDisplay();
+                    }
+                }
+                renderTeams();
+            };
+        }
         // Remove generic addTeam button handlers to avoid overwriting COLLEC. GEH. progressive logic
         let roundLabel = document.getElementById('roundLabel');
         let round = roundLabel ? roundLabel.textContent.trim() : '';
@@ -1027,15 +1500,111 @@ function renderTeams() {
             if (round === 'GALLERIJ') {
                 document.getElementById(`addTeam${i}_10`).onclick = null;
             } else {
-                document.getElementById(`addTeam${i}_10`).onclick = function () { updateScoreAndField(i, 10); };
+                const add10Btn = document.getElementById(`addTeam${i}_10`);
+                if (add10Btn) {
+                    add10Btn.onclick = function () {
+                        updateScoreAndField(i, 10);
+                        const roundLabelRef = document.getElementById('roundLabel');
+                        const currentRoundName = roundLabelRef ? roundLabelRef.textContent.trim() : '';
+                        if (currentRoundName === '3-6-9') {
+                            if (typeof setExclusiveTeamStarted === 'function') {
+                                setExclusiveTeamStarted(i);
+                            } else {
+                                resetAllTeamStartFlags();
+                                localStorage.setItem(`team${i}Started`, '1');
+                            }
+                            const currentTurnKey = getCurrentTurnKey();
+                            localStorage.setItem('startCheckTurn', currentTurnKey);
+                            let counterValue = parseInt(localStorage.getItem('nextTurnCount'));
+                            if (isNaN(counterValue) || counterValue < 1) {
+                                counterValue = 1;
+                            }
+                            localStorage.setItem('nextTurnCount', String(counterValue + 1));
+                            localStorage.setItem('threeSixNineBonusTargetId', '-1');
+                            if (typeof refreshNextTurnCounterDisplay === 'function') {
+                                refreshNextTurnCounterDisplay();
+                            }
+                            if (typeof window.renderTeams === 'function') {
+                                window.renderTeams();
+                            }
+                        }
+                    };
+                }
             }
-            if (round === 'EDIT MODE' || round === 'GALLERIJ') {
-                document.getElementById(`addTeam${i}_15`).onclick = function () { updateScoreAndField(i, 15); };
-            } else {
-                document.getElementById(`addTeam${i}_15`).onclick = null;
+            const add15Btn = document.getElementById(`addTeam${i}_15`);
+            if (add15Btn) {
+                if (round === 'EDIT MODE') {
+                    add15Btn.onclick = function () { updateScoreAndField(i, 15); };
+                } else if (round === 'GALLERIJ') {
+                    add15Btn.onclick = function () {
+                        updateScoreAndField(i, 15);
+                        let gallCount = parseInt(localStorage.getItem('gallerijFifteenCount'));
+                        if (isNaN(gallCount) || gallCount < 0) gallCount = 0;
+                        gallCount += 1;
+                        localStorage.setItem('gallerijFifteenCount', String(gallCount));
+                        if (gallCount >= 10) {
+                            localStorage.setItem('gallerijFifteenCount', '0');
+                            const currentTeamIdx = parseInt(localStorage.getItem('currentTeam'));
+                            if (!isNaN(currentTeamIdx) && currentTeamIdx !== -1) {
+                                localStorage.setItem(`team${currentTeamIdx + 1}Done`, '1');
+                            }
+                            localStorage.setItem('currentTeam', -1);
+                            localStorage.setItem('nextEnabledTeamIndex', '-1');
+                            runStandardNextTurnSequence();
+                        }
+                    };
+                } else {
+                    add15Btn.onclick = null;
+                }
             }
-            document.getElementById(`addTeam${i}_20`).onclick = function () { updateScoreAndField(i, 20); };
-            document.getElementById(`addTeam${i}_30`).onclick = function () { updateScoreAndField(i, 30); };
+            const add20Btn = document.getElementById(`addTeam${i}_20`);
+            if (add20Btn) {
+                add20Btn.onclick = function () {
+                    updateScoreAndField(i, 20);
+                    const roundLabelRef = document.getElementById('roundLabel');
+                    const currentRoundName = roundLabelRef ? roundLabelRef.textContent.trim() : '';
+                    if (currentRoundName === 'OPEN DEUR') {
+                        let bonusCount = parseInt(localStorage.getItem('openDeurTwentyCount'));
+                        if (isNaN(bonusCount) || bonusCount < 0) bonusCount = 0;
+                        bonusCount += 1;
+                        localStorage.setItem('openDeurTwentyCount', String(bonusCount));
+                        if (bonusCount >= 4) {
+                            localStorage.setItem('openDeurTwentyCount', '0');
+                            const currentTeamIdx = parseInt(localStorage.getItem('currentTeam'));
+                            if (!isNaN(currentTeamIdx) && currentTeamIdx !== -1) {
+                                localStorage.setItem(`team${currentTeamIdx + 1}Done`, '1');
+                            }
+                            localStorage.setItem('currentTeam', -1);
+                            localStorage.setItem('nextEnabledTeamIndex', '-1');
+                            runStandardNextTurnSequence();
+                        }
+                    }
+                };
+            }
+            const add30Btn = document.getElementById(`addTeam${i}_30`);
+            if (add30Btn) {
+                add30Btn.onclick = function () {
+                    updateScoreAndField(i, 30);
+                    const roundLabelRef = document.getElementById('roundLabel');
+                    const currentRoundName = roundLabelRef ? roundLabelRef.textContent.trim() : '';
+                    if (currentRoundName === 'PUZZEL') {
+                        let puzzelCount = parseInt(localStorage.getItem('puzzelThirtyCount'));
+                        if (isNaN(puzzelCount) || puzzelCount < 0) puzzelCount = 0;
+                        puzzelCount += 1;
+                        localStorage.setItem('puzzelThirtyCount', String(puzzelCount));
+                        if (puzzelCount >= 3) {
+                            localStorage.setItem('puzzelThirtyCount', '0');
+                            const currentTeamIdx = parseInt(localStorage.getItem('currentTeam'));
+                            if (!isNaN(currentTeamIdx) && currentTeamIdx !== -1) {
+                                localStorage.setItem(`team${currentTeamIdx + 1}Done`, '1');
+                            }
+                            localStorage.setItem('currentTeam', -1);
+                            localStorage.setItem('nextEnabledTeamIndex', '-1');
+                            runStandardNextTurnSequence();
+                        }
+                    }
+                };
+            }
             document.getElementById(`addTeam${i}_40`).onclick = function () { updateScoreAndField(i, 40); };
             document.getElementById(`addTeam${i}_50`).onclick = function () { updateScoreAndField(i, 50); };
         }
@@ -1151,6 +1720,7 @@ function reset() {
             localStorage.removeItem("visibleTeam" + i);
             localStorage.removeItem(`team${i}Done`);
             localStorage.removeItem(`team${i}AddCount`);
+            localStorage.removeItem(`team${i}Started`);
         }
         // Also clear any stray team slots from previous bugs (10-20)
         for (let i = 10; i <= 20; i++) {
@@ -1159,6 +1729,7 @@ function reset() {
             localStorage.removeItem("visibleTeam" + i);
             localStorage.removeItem(`team${i}Done`);
             localStorage.removeItem(`team${i}AddCount`);
+            localStorage.removeItem(`team${i}Started`);
         }
         localStorage.setItem("currentTeam", -1);
         localStorage.setItem('quizStarted', '0');
@@ -1166,6 +1737,13 @@ function reset() {
         localStorage.setItem('nextEnabledTeamIndex', -1);
         localStorage.removeItem('roundIndex');
         localStorage.removeItem('nextTurnCount');
+        localStorage.removeItem('startCheckTurn');
+        localStorage.removeItem('pendingStartTeamId');
+        localStorage.removeItem('threeSixNineBonusTargetId');
+        localStorage.removeItem('openDeurTwentyCount');
+        localStorage.removeItem('puzzelThirtyCount');
+        localStorage.removeItem('gallerijFifteenCount');
+        localStorage.removeItem('collecFiftyCount');
         if (typeof refreshNextTurnCounterDisplay === 'function') {
             refreshNextTurnCounterDisplay();
         }
