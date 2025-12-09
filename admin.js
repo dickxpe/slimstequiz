@@ -41,6 +41,7 @@ document.getElementById("addTeamBtn").onclick = function () {
             localStorage.setItem("nameTeam" + i, name);
             localStorage.setItem("team" + i + "Score", 60);
             localStorage.setItem("visibleTeam" + i, "1");
+            localStorage.setItem(`team${i}AddCount`, '0');
             renderTeams();
             break;
         }
@@ -105,6 +106,37 @@ if (!document.getElementById('admin-score-spin-style')) {
 }
 
 const MAX_TEAMS = 9;
+
+function getTeamAddCount(teamId) {
+    const raw = localStorage.getItem(`team${teamId}AddCount`);
+    const parsed = parseInt(raw);
+    return isNaN(parsed) || parsed < 0 ? 0 : parsed;
+}
+
+function setTeamAddCount(teamId, value) {
+    const normalized = Math.max(0, value | 0);
+    localStorage.setItem(`team${teamId}AddCount`, String(normalized));
+    const badge = document.getElementById(`teamAddCounter${teamId}`);
+    if (badge) {
+        badge.textContent = `${normalized}`;
+    }
+}
+
+function incrementTeamAddCount(teamId) {
+    const nextValue = getTeamAddCount(teamId) + 1;
+    setTeamAddCount(teamId, nextValue);
+}
+
+function resetAllTeamAddCounts() {
+    for (let i = 1; i <= MAX_TEAMS; i++) {
+        const teamName = localStorage.getItem(`nameTeam${i}`);
+        if (!teamName) {
+            localStorage.removeItem(`team${i}AddCount`);
+            continue;
+        }
+        setTeamAddCount(i, 0);
+    }
+}
 
 function applyNextTurnState() {
     localStorage.setItem('collProgress', '0');
@@ -263,7 +295,7 @@ function renderTeams() {
             counterEl.style.fontWeight = 'bold';
             counterEl.style.color = '#fff';
             counterEl.style.letterSpacing = '1px';
-            counterEl.style.minWidth = '48px';
+            counterEl.style.minWidth = '40px';
             counterEl.style.minHeight = '48px';
             counterEl.style.padding = '8px 18px';
             counterEl.style.borderRadius = '18px';
@@ -450,6 +482,10 @@ function renderTeams() {
     // (If you need to add button listeners, do so in the main render or setup function, not here)
     const container = document.getElementById("teamsContainer");
     const stopBtn = document.getElementById("stop");
+    const previousRowPositions = new Map();
+    container.querySelectorAll('.team-row[data-team-id]').forEach(row => {
+        previousRowPositions.set(row.dataset.teamId, row.getBoundingClientRect());
+    });
     container.innerHTML = "";
     // Inject global font style for DIN Black Regular
     if (!document.getElementById('din-black-font-style')) {
@@ -502,6 +538,23 @@ function renderTeams() {
             .col-name-header { margin-left: 10px; }
             .col-actions {min-width: 120px; flex: 2 1 120px; flex-wrap: nowrap; justify-content: flex-start; margin-left: 60px; gap: 18px; }
             .col-score-label {margin-left: 326px; font-size: 1em; letter-spacing: 1px; }
+            .team-row-inner span.team-add-counter {
+                background: rgba(255,255,255,0.12);
+                border-radius: 14px;
+                font-size: 1.3em;
+                color: #ffffff;
+                margin-left: 0px;
+                min-width: 60px;
+                height: 65px;
+                line-height: 65px;
+                text-align: center;
+                //border: 2px solid rgba(255,255,255,0.25);
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
+                font-weight: 700;
+                letter-spacing: 0.03em;
+            }
             #editRoundBtn {
                 background: #fee500ff;
                 color: #222222;
@@ -593,12 +646,14 @@ function renderTeams() {
         teams.sort((a, b) => a.score - b.score);
     }
     // Render sorted teams
+    const newRowElements = [];
     teams.forEach((team, rowIndex) => {
         let i = team.i;
         let name = team.name;
         let score = team.score;
         let visible = team.visible;
         let done = localStorage.getItem(`team${i}Done`) === '1';
+        let addCount = getTeamAddCount(i);
         let roundLabel = document.getElementById('roundLabel');
         let round = roundLabel ? roundLabel.textContent.trim() : '';
         const inEditMode = (round === 'EDIT MODE');
@@ -655,6 +710,7 @@ function renderTeams() {
         }
         const enable15 = inEditMode ? true : (round === 'GALLERIJ' && canScoreThisRow);
         let row = document.createElement("div");
+        row.dataset.teamId = String(i);
         row.className = "team-row " + (rowIndex % 2 === 0 ? "row-odd" : "row-even");
         row.innerHTML = `
             <div class='team-row-inner' style="margin-bottom: -4px;">
@@ -678,10 +734,12 @@ function renderTeams() {
                         </span>
                         ` : ''}
                     </span>
+                    ${inEditMode ? '' : `<span class='team-add-counter' id="teamAddCounter${i}">${addCount}</span>`}
                 </span>
             </div>
         `;
         container.appendChild(row);
+        newRowElements.push(row);
         // COLLEC. GEH. progressive button click logic
         if (round === 'COLLEC. GEH.') {
             let btn10 = document.getElementById(`addTeam${i}_10`);
@@ -724,6 +782,29 @@ function renderTeams() {
             collButtonHandler(3, btn40, '+40');
             collButtonHandler(4, btn50, '+50');
         }
+    });
+    // Animate row reordering using FLIP technique
+    requestAnimationFrame(() => {
+        newRowElements.forEach(row => {
+            const prevRect = previousRowPositions.get(row.dataset.teamId);
+            if (!prevRect) return;
+            const newRect = row.getBoundingClientRect();
+            const deltaX = prevRect.left - newRect.left;
+            const deltaY = prevRect.top - newRect.top;
+            if (!deltaX && !deltaY) return;
+            row.style.transition = 'none';
+            row.style.transform = `translate(${deltaX}px, ${deltaY}px)`;
+            row.style.opacity = '0.85';
+            requestAnimationFrame(() => {
+                row.style.transition = 'transform 260ms ease, opacity 260ms ease';
+                row.style.transform = 'translate(0, 0)';
+                row.style.opacity = '1';
+                setTimeout(() => {
+                    row.style.transition = '';
+                    row.style.transform = '';
+                }, 300);
+            });
+        });
     });
     // ...existing code...
     // NEXT TURN button resets COLLEC. GEH. progress and enables correct team row(s)
@@ -961,6 +1042,9 @@ function renderTeams() {
             let score = Number.parseInt(localStorage.getItem(scoreKey)) || 0;
             score += delta;
             if (score < 0) score = 0;
+            if (delta > 0) {
+                incrementTeamAddCount(teamId);
+            }
             localStorage.setItem(scoreKey, score);
             const input = document.getElementById(`scoreTeam${teamId}`);
             if (input) input.value = score;
@@ -1044,6 +1128,7 @@ function reset() {
             localStorage.removeItem("team" + i + "Score");
             localStorage.removeItem("visibleTeam" + i);
             localStorage.removeItem(`team${i}Done`);
+            localStorage.removeItem(`team${i}AddCount`);
         }
         // Also clear any stray team slots from previous bugs (10-20)
         for (let i = 10; i <= 20; i++) {
@@ -1051,6 +1136,7 @@ function reset() {
             localStorage.removeItem("team" + i + "Score");
             localStorage.removeItem("visibleTeam" + i);
             localStorage.removeItem(`team${i}Done`);
+            localStorage.removeItem(`team${i}AddCount`);
         }
         localStorage.setItem("currentTeam", -1);
         localStorage.setItem('quizStarted', '0');
