@@ -1,0 +1,129 @@
+<html>
+
+<head>
+    <script defer src="admin.js"></script>
+    <style>
+    /* Force dark gray background for stopped team name and score fields */
+    input.stopped-team-name {
+        background-color: #222222 !important;
+        color: white !important;
+    }
+    input.stopped-team-score {
+        background-color: #222222 !important;
+        color: white !important;
+    }
+    #addTeamContainer { height: auto !important; display: flex !important; }
+    #addTeamContainer[style*='display: none'] {
+        height: 0 !important;
+        margin-top: 0 !important;
+        margin-bottom: 0 !important;
+        padding-top: 0 !important;
+        padding-bottom: 0 !important;
+        min-height: 0 !important;
+        max-height: 0 !important;
+        border: none !important;
+    }
+
+    button {
+        border-radius: 16px !important;
+        border: none !important;
+    }
+
+    input {
+        border-radius: 16px !important;
+    }
+
+    #startQuiz:hover:not(:disabled), #reset:hover:not(:disabled), #addTeamBtn:hover:not(:disabled) {
+        filter: brightness(1.25);
+        opacity: 1;
+        z-index: 1;
+        box-shadow: none;
+    }
+    /* Style placeholder text for team name field to white */
+    #addTeamName::placeholder {
+        color: #fff !important;
+        opacity: 1;
+    }
+    </style>
+</head>
+
+<body>
+   
+    <div>
+        <script>
+        // Round names list
+        const roundNames = ["3-6-9", "OPEN DEUR", "PUZZEL", "GALLERIJ", "COLLEC. GEH.", "FINALE"];
+        let roundIndex = 0;
+        window.addEventListener('DOMContentLoaded', function() {
+            const roundLabel = document.getElementById('roundLabel');
+            const nextRoundBtn = document.getElementById('nextRound');
+            const prevRoundBtn = document.getElementById('prevRound');
+            const nextTurnBtn = document.getElementById('nextTurn');
+            // Set roundIndex from localStorage if available
+            let storedRoundIndex = parseInt(localStorage.getItem('roundIndex'));
+            if (!isNaN(storedRoundIndex) && storedRoundIndex >= 0 && storedRoundIndex < roundNames.length) {
+                roundIndex = storedRoundIndex;
+            }
+            if (roundLabel && nextRoundBtn && prevRoundBtn) {
+                roundLabel.textContent = roundNames[roundIndex];
+                nextRoundBtn.addEventListener('click', function() {
+                    if (roundIndex < roundNames.length - 1) {
+                        roundIndex++;
+                        roundLabel.textContent = roundNames[roundIndex];
+                        localStorage.setItem('roundIndex', roundIndex);
+                        if (window.renderTeams) window.renderTeams();
+                    }
+                });
+                prevRoundBtn.addEventListener('click', function() {
+                    if (roundIndex > 0) {
+                        roundIndex--;
+                        roundLabel.textContent = roundNames[roundIndex];
+                        localStorage.setItem('roundIndex', roundIndex);
+                        if (window.renderTeams) window.renderTeams();
+                    }
+                });
+            }
+            // NEXT TURN button functionality is handled in admin.js
+        });
+        </script>
+        <div id="mainContentContainer" style="max-width: 768px; width: 100%; margin-left: 0;">
+            <div id="teamsContainer"></div>
+        </div>
+        <div id="addTeamContainer" style="margin-left: 40px;margin-top: 10px;margin-bottom: 18px; display: flex; gap: 16px; align-items: center;">
+            <input id="addTeamName" type="text" placeholder="New team name" style="background-color: #fea400; width: 320px; height: 58px; font-size: 1.5em; padding: 0 18px;" />
+            <button id="addTeamBtn" style="background-color: darkblue; color: white;width: 272px; margin-left: 6px; height: 58px; font-size: 1.3em; padding: 0 32px;">ADD TEAM</button>
+        </div>
+                    <div style="display: flex; flex-direction: row; align-items: center; margin-left: 40px; margin-bottom: 16px; margin-top: 10px; gap: 16px;">
+                        <button id="stop" style="width:1100px; height: 140px; background-color: darkred; color: white; font-size: 2em;">STOP</button>
+                    </div>
+                    <!-- Removed extra <br /> to reduce vertical space -->
+                    <div style="display: flex; flex-direction: row; align-items: center; margin-left: 40px; margin-bottom: 16px; margin-top: 10px; gap: 16px;">
+                        <button id="prevRound" style="height: 58px; width:40px;background-color: #222aaa; color: white; font-size: 2em; padding: 0 4px;">&LessLess;</button>
+                        <span id="roundLabel" style="font-size: 2em; font-weight: bold; color: #fff8e1; background: #222aaa; border-radius: 12px; padding: 0 24px; height: 58px; width: 260px; display: flex; align-items: center; justify-content: center;">EDIT</span>
+                        <button id="nextRound" style="height: 58px;width:40px; background-color: #2222aa; color: white; font-size: 2em; padding: 0 4px;">&GreaterGreater;</button>
+                        <button id="nextTurn" style="height: 58px; background-color: purple; color: white; font-size: 2em; padding: 0 32px;">NEXT TURN</button>
+                    </div>
+                    <!-- Removed extra <br /> to reduce vertical space -->
+        <div id="titleRow" style="margin-left: 40px; margin-bottom: 18px; display: flex; gap: 12px; align-items: center;">
+            <label  style="font-size: 1.5em; font-weight: bold;">Title:</label>
+            <input type="text" id="inputField1" value="DE" style="background-color: #fea400; width: 80px; height: 58px; font-size: 1.1em; padding: 0 10px;" />
+            <input type="text" id="inputField2" value="Slimste Mens" style="background-color: #fea400; width: 224px; height: 58px; font-size: 1.1em; padding: 0 10px;" />
+            <input type="text" id="inputField3" value="TER WERELD" style="background-color: #fea400;width: 180px; height: 58px; font-size: 1.1em; padding: 0 10px;" />
+            <button style="background-color: green; color:white; width: 422px; height: 58px; font-size: 1.5em;" id="startQuiz" onclick="window.open('quiz.html', '_blank', 'location=no,menubar=no,scrollbars=no,status=no,toolbar=no')">START QUIZ</button>
+        </div>
+        <script>
+        function hideTitleLabelIfQuizStarted() {
+            var titleLabel = document.querySelector('#titleRow label');
+            var quizStarted = localStorage.getItem('quizStarted') === '1' || localStorage.getItem('quizWasStarted') === '1';
+            if (titleLabel) {
+                titleLabel.style.display = quizStarted ? 'none' : 'inline-block';
+            }
+        }
+        window.addEventListener('DOMContentLoaded', hideTitleLabelIfQuizStarted);
+        window.addEventListener('storage', hideTitleLabelIfQuizStarted);
+        </script>
+        <button id="reset" style="margin-top: 0px;margin-left: 40px;background-color: darkred; color:rgb(255, 255, 255);width: 422px; height:58px; font-size: 1.3em;">RESET QUIZ</button>
+    </div>
+</body>
+
+</html>
