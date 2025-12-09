@@ -14,13 +14,13 @@ function injectHeaderText() {
     style.innerHTML = `
         @font-face {
             font-family: 'DIN Black Regular';
-            src: url('styles/DIN Black Regular.otf') format('opentype');
+            src: url('../styles/DIN Black Regular.otf') format('opentype');
             font-weight: normal;
             font-style: normal;
         }
         @font-face {
             font-family: 'Hello';
-            src: url('styles/Hello.otf') format('opentype');
+            src: url('../styles/Hello.otf') format('opentype');
             font-weight: normal;
             font-style: normal;
         }

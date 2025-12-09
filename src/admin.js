@@ -11,13 +11,13 @@ if (!document.getElementById('admin-gradient-bg-style')) {
 }
 
 // Ensure CSS is loaded from correct relative path
-if (!document.getElementById('admin-css-link')) {
-    const link = document.createElement('link');
-    link.id = 'admin-css-link';
-    link.rel = 'stylesheet';
-    link.href = '../styles/index.css';
-    document.head.appendChild(link);
-}
+// if (!document.getElementById('admin-css-link')) {
+//     // const link = document.createElement('link');
+//     // link.id = 'admin-css-link';
+//     // link.rel = 'stylesheet';
+//     // link.href = 'styles/index.css';
+//     document.head.appendChild(link);
+// }
 // Inject button hover styles for color highlights
 if (!document.getElementById('admin-button-hover-style')) {
     const style = document.createElement('style');
@@ -407,6 +407,10 @@ function renderTeams() {
                     if (window.executeNextTurnLogic) {
                         window.executeNextTurnLogic();
                     }
+                    // Reset all team add counters when round changes
+                    if (typeof resetAllTeamAddCounts === 'function') {
+                        resetAllTeamAddCounts();
+                    }
                     localStorage.setItem('nextTurnCount', '1');
                     refreshNextTurnCounterDisplay();
                 }, 0);
@@ -431,6 +435,10 @@ function renderTeams() {
                 setTimeout(() => {
                     if (window.executeNextTurnLogic) {
                         window.executeNextTurnLogic();
+                    }
+                    // Reset all team add counters when round changes
+                    if (typeof resetAllTeamAddCounts === 'function') {
+                        resetAllTeamAddCounts();
                     }
                     localStorage.setItem('nextTurnCount', '1');
                     refreshNextTurnCounterDisplay();
