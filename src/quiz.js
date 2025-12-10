@@ -8,6 +8,239 @@ if (!document.getElementById('quiz-css-link')) {
     document.head.appendChild(link);
 }
 // --- Show 3 input field values at top ---
+
+const FINALE_WINNER_KEY = 'finaleWinnerTeamId';
+const BASE_CONFETTI_COLORS = ['#0a1c5c', '#ff6a00', '#8b0000', '#fdd835', '#441173'];
+let finaleCelebrationActive = false;
+let currentWinnerName = '';
+
+function ensureCelebrationStyles() {
+    if (document.getElementById('finale-celebration-style')) {
+        return;
+    }
+    const style = document.createElement('style');
+    style.id = 'finale-celebration-style';
+    style.textContent = `
+        #finaleWinnerOverlay {
+            position: fixed;
+            inset: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-direction: column;
+            background: rgba(3, 6, 24, 0.86);
+            color: #fff;
+            z-index: 4600;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 220ms ease;
+        }
+        #finaleWinnerOverlay.visible {
+            opacity: 1;
+            pointer-events: auto;
+        }
+        #finaleWinnerOverlay .winner-card {
+            text-align: center;
+            padding: 32px 48px;
+            border-radius: 24px;
+            background: linear-gradient(135deg, darkblue 0%, #ff6a00 45%, darkred 75%, darkblue 100%);
+            box-shadow: 0 20px 60px rgba(0,0,0,0.45);
+            border: 3px solid rgba(255,255,255,0.25);
+            min-width: 480px;
+        }
+        #finaleWinnerOverlay .winner-label {
+            font-family: 'DIN Black Regular', Arial, sans-serif;
+            font-size: 1.4em;
+            letter-spacing: 0.2em;
+            color: darkblue;
+            display: inline-block;
+            margin-bottom: 24px;
+        }
+        #finaleWinnerOverlay .winner-name {
+            font-family: 'Hello', cursive;
+            font-size: 4.5em;
+            color: #fff;
+            text-shadow:
+                0 0 4px #001a66,
+                0 1px 4px #001a66,
+                0 -1px 4px #001a66,
+                1px 0 4px #001a66,
+                -1px 0 4px #001a66,
+                0 1px 0 #fff,
+                0 4px 16px rgba(0,0,0,0.45);
+            display: block;
+        }
+        #confettiWrapper {
+            position: fixed;
+            inset: 0;
+            overflow: hidden;
+            pointer-events: none;
+            z-index: 4700;
+        }
+        .confetti-piece {
+            position: absolute;
+            will-change: transform, margin-left;
+            width: 12px;
+            height: 26px;
+            border-radius: 4px;
+            opacity: 0.85;
+            --swayDistance: 30px;
+            --twirlMid: 720deg;
+            --twirlEnd: 1440deg;
+            animation-name: confetti-fall, confetti-sway;
+            animation-timing-function: linear, ease-in-out;
+            animation-iteration-count: infinite, infinite;
+            animation-direction: normal, alternate;
+        }
+        @keyframes confetti-fall {
+            0% {
+                transform: translate3d(0, -120vh, 0) rotate(0deg);
+            }
+            50% {
+                transform: translate3d(0, 10vh, 0) rotate(var(--twirlMid, 720deg));
+            }
+            100% {
+                transform: translate3d(0, 120vh, 0) rotate(var(--twirlEnd, 1440deg));
+            }
+        }
+        @keyframes confetti-sway {
+            0% {
+                margin-left: calc(var(--swayDistance, 30px) * -1);
+            }
+            100% {
+                margin-left: var(--swayDistance, 30px);
+            }
+        }
+        canvas.finale-celebration-active {
+            opacity: 0;
+            transition: opacity 200ms ease;
+        }
+    `;
+    document.head.appendChild(style);
+}
+
+function varyColor(hex) {
+    const sanitized = hex.replace('#', '');
+    const r = parseInt(sanitized.substring(0, 2), 16);
+    const g = parseInt(sanitized.substring(2, 4), 16);
+    const b = parseInt(sanitized.substring(4, 6), 16);
+    const jitter = () => Math.floor((Math.random() - 0.5) * 60);
+    const clamp = (value) => Math.max(0, Math.min(255, value));
+    const variedR = clamp(r + jitter());
+    const variedG = clamp(g + jitter());
+    const variedB = clamp(b + jitter());
+    return `rgb(${variedR}, ${variedG}, ${variedB})`;
+}
+
+function createConfettiPieces(container, count) {
+    const colors = BASE_CONFETTI_COLORS;
+    for (let i = 0; i < count; i++) {
+        const piece = document.createElement('div');
+        piece.className = 'confetti-piece';
+        piece.style.backgroundColor = varyColor(colors[i % colors.length]);
+        piece.style.left = `${Math.random() * 100}vw`;
+        piece.style.top = `${-10 - Math.random() * 30}vh`;
+        const fallDuration = 4 + Math.random() * 3;
+        const swayDuration = 1.2 + Math.random() * 1.8;
+        piece.style.animationDuration = `${fallDuration}s, ${swayDuration}s`;
+        piece.style.animationDelay = `${-Math.random() * 3}s, ${-Math.random() * swayDuration}s`;
+        const swayDistance = `${15 + Math.random() * 55}px`;
+        piece.style.setProperty('--swayDistance', swayDistance);
+        const twirlEndDeg = 900 + Math.random() * 900;
+        piece.style.setProperty('--twirlEnd', `${twirlEndDeg}deg`);
+        piece.style.setProperty('--twirlMid', `${twirlEndDeg / 2}deg`);
+        piece.style.opacity = `${0.5 + Math.random() * 0.5}`;
+        piece.style.width = `${8 + Math.random() * 8}px`;
+        piece.style.height = `${16 + Math.random() * 16}px`;
+        container.appendChild(piece);
+    }
+}
+
+function showWinnerOverlay(name) {
+    ensureCelebrationStyles();
+    let overlay = document.getElementById('finaleWinnerOverlay');
+    if (!overlay) {
+        overlay = document.createElement('div');
+        overlay.id = 'finaleWinnerOverlay';
+        overlay.innerHTML = `
+            <div class="winner-card">
+                <span class="winner-label">WINNAAR</span>
+                <span class="winner-name"></span>
+            </div>
+        `;
+        document.body.appendChild(overlay);
+    }
+    const nameNode = overlay.querySelector('.winner-name');
+    if (nameNode) {
+        nameNode.textContent = name;
+    }
+    overlay.classList.add('visible');
+}
+
+function hideWinnerOverlay() {
+    const overlay = document.getElementById('finaleWinnerOverlay');
+    if (overlay) {
+        overlay.remove();
+    }
+}
+
+function mountConfetti() {
+    ensureCelebrationStyles();
+    let wrapper = document.getElementById('confettiWrapper');
+    if (wrapper) {
+        wrapper.remove();
+    }
+    wrapper = document.createElement('div');
+    wrapper.id = 'confettiWrapper';
+    document.body.appendChild(wrapper);
+    createConfettiPieces(wrapper, 90);
+}
+
+function removeConfetti() {
+    const wrapper = document.getElementById('confettiWrapper');
+    if (wrapper) {
+        wrapper.remove();
+    }
+}
+
+function activateFinaleCelebration(name) {
+    finaleCelebrationActive = true;
+    currentWinnerName = name;
+    showWinnerOverlay(name);
+    mountConfetti();
+    if (canvas) {
+        canvas.classList.add('finale-celebration-active');
+    }
+}
+
+function deactivateFinaleCelebration() {
+    finaleCelebrationActive = false;
+    currentWinnerName = '';
+    hideWinnerOverlay();
+    removeConfetti();
+    if (canvas) {
+        canvas.classList.remove('finale-celebration-active');
+    }
+}
+
+function checkFinaleVictoryState() {
+    const winnerIdRaw = localStorage.getItem(FINALE_WINNER_KEY);
+    const winnerId = winnerIdRaw !== null ? parseInt(winnerIdRaw, 10) : -1;
+    if (!isNaN(winnerId) && winnerId !== -1) {
+        const winnerName = localStorage.getItem(`nameTeam${winnerId}`) || `Team ${winnerId}`;
+        if (!finaleCelebrationActive || winnerName !== currentWinnerName) {
+            activateFinaleCelebration(winnerName);
+        }
+        return true;
+    }
+    if (finaleCelebrationActive) {
+        deactivateFinaleCelebration();
+    }
+    return false;
+}
+
+checkFinaleVictoryState();
+window.addEventListener('storage', checkFinaleVictoryState);
 function injectHeaderText() {
     // Inject font-face for DIN Black and Hello
     const style = document.createElement('style');
@@ -36,7 +269,7 @@ function injectHeaderText() {
             gap: 18px;
             padding: 18px 0 12px 0;
             background: none;
-            z-index: 1000;
+            z-index: 5000;
             box-shadow: none;
         }
         .quiz-header-1, .quiz-header-3 {
@@ -106,6 +339,8 @@ function injectHeaderText() {
     roundLabel.style.minWidth = '460px';
     roundLabel.style.width = 'auto';
     roundLabel.style.boxShadow = '0 2px 12px #0002';
+    roundLabel.style.opacity = '0';
+    roundLabel.style.pointerEvents = 'none';
 
     // Place header and round label above the canvas
     const canvas = document.getElementById('canvas');
@@ -127,9 +362,6 @@ function injectHeaderText() {
                 displayText = 'COLLECTIEF GEHEUGEN';
             }
             roundLabel.textContent = displayText;
-            roundLabel.style.display = 'block';
-        } else {
-            roundLabel.style.display = 'none';
         }
     }
     updateRoundLabel();

@@ -211,6 +211,11 @@ function renderTeams() {
     let teams = []; // Initialize teams array
     const roundLabel = document.getElementById('roundLabel');
     const round = roundLabel ? roundLabel.textContent.trim() : '';
+    const finaleSetupKey = 'finaleSetupComplete';
+    const finaleSetupComplete = localStorage.getItem(finaleSetupKey) === '1';
+    if (round !== 'FINALE' && finaleSetupComplete) {
+        localStorage.removeItem(finaleSetupKey);
+    }
     const isEditModeRound = round === 'EDIT MODE';
     const THREE_SIX_NINE_MAX_TURNS = 12;
     let nextTurnCountValue = parseInt(localStorage.getItem('nextTurnCount') || '1', 10);
@@ -224,7 +229,7 @@ function renderTeams() {
         let visible = localStorage.getItem("visibleTeam" + i) !== "0";
         if (name && visible) visibleTeamCount++;
     }
-    const reachedThreeSixNineTurnCap = round === '3-6-9' && nextTurnCountValue >= THREE_SIX_NINE_MAX_TURNS;
+    const reachedThreeSixNineTurnCap = round === '3-6-9' && nextTurnCountValue > THREE_SIX_NINE_MAX_TURNS;
     const otherRoundsTurnCap = (!isEditModeRound && round !== '3-6-9' && round !== 'FINALE')
         ? Math.max(1, visibleTeamCount + 1)
         : Number.POSITIVE_INFINITY;
@@ -460,17 +465,19 @@ function renderTeams() {
         if (!inEditMode) {
             if (currentRound === '3-6-9') {
                 displayValue = Math.min(counterValue, THREE_SIX_NINE_MAX_TURNS);
-            } else {
+            } else if (currentRound !== 'FINALE') {
                 const cap = Math.max(1, visibleTeamCount);
                 if (currentRound !== '') {
                     displayValue = Math.min(counterValue, cap);
                 }
+            } else {
+                displayValue = counterValue;
             }
         }
         if (counterEl) {
             counterEl.textContent = `${displayValue}`;
-            const isMultipleOfThree = displayValue % 3 === 0;
-            counterEl.style.color = isMultipleOfThree ? '#002288' : '#fff'; // dark blue
+            const highlightMultiple = currentRound === '3-6-9' && displayValue % 3 === 0;
+            counterEl.style.color = highlightMultiple ? '#002288' : '#fff'; // dark blue
         }
         const counterWrapper = document.getElementById('nextTurnCounterWrapper');
         if (counterWrapper) {
@@ -564,7 +571,6 @@ function renderTeams() {
             localStorage.setItem('collProgress', '0');
             localStorage.setItem('collecFiftyCount', '0');
         } else if (round === 'FINALE') {
-            localStorage.setItem('nextTurnCount', '1');
             localStorage.setItem('openDeurTwentyCount', '0');
             localStorage.setItem('puzzelThirtyCount', '0');
             localStorage.setItem('gallerijFifteenCount', '0');
@@ -800,7 +806,7 @@ function renderTeams() {
         </style>
         <div class='team-header-row-inner'>
             <span class='col-visible'>&#128065;</span>
-            <span class='col-name'><span class="col-name-header">TEAM NAME</span></span>
+            <span class='col-name'><span class="col-name-header">TEAM NAAM</span></span>
             <span class='col-actions' style="margin-left: 20px; ${showNameOnlyBeforeStart ? 'display:none;' : ''}">ACTIES
                 <button id="editRoundBtn">BEWERK</button>
                 <span class='col-score-label'>SCORE</span>
@@ -889,6 +895,47 @@ function renderTeams() {
         return lowestTeamId;
     };
     let finaleLowestScoreTeamId = round === 'FINALE' ? getFinLowestEligible() : -1;
+    let finaleZeroScoreTeamId = -1;
+    let finaleWinnerTeamId = -1;
+    let finaleVictoryLocked = false;
+    if (round === 'FINALE') {
+        const visibleFinalists = teams.filter(team => team.visible);
+        const storedWinnerId = parseInt(localStorage.getItem('finaleWinnerTeamId') || '-1', 10);
+        const storedZeroId = parseInt(localStorage.getItem('finaleZeroTeamId') || '-1', 10);
+        const zeroTeam = visibleFinalists.find(team => team.score <= 0);
+        if (storedWinnerId !== -1) {
+            finaleWinnerTeamId = storedWinnerId;
+            if (storedZeroId !== -1) {
+                finaleZeroScoreTeamId = storedZeroId;
+            } else {
+                const opponent = visibleFinalists.find(team => team.i !== storedWinnerId);
+                finaleZeroScoreTeamId = opponent ? opponent.i : -1;
+                if (finaleZeroScoreTeamId !== -1) {
+                    localStorage.setItem('finaleZeroTeamId', String(finaleZeroScoreTeamId));
+                }
+            }
+            finaleVictoryLocked = true;
+        } else if (zeroTeam) {
+            const otherTeam = visibleFinalists.find(team => team.i !== zeroTeam.i);
+            if (otherTeam) {
+                finaleWinnerTeamId = otherTeam.i;
+                finaleZeroScoreTeamId = zeroTeam.i;
+                finaleVictoryLocked = true;
+                localStorage.setItem('finaleWinnerTeamId', String(finaleWinnerTeamId));
+                localStorage.setItem('finaleZeroTeamId', String(finaleZeroScoreTeamId));
+            }
+        }
+    } else {
+        localStorage.removeItem('finaleWinnerTeamId');
+        localStorage.removeItem('finaleZeroTeamId');
+    }
+    if (round === 'FINALE' && !isEditModeRound && finaleLowestScoreTeamId !== -1) {
+        if (pendingStartTeamId === -1 && currentTeam === -1) {
+            localStorage.setItem('pendingStartTeamId', String(finaleLowestScoreTeamId));
+            pendingStartTeamId = finaleLowestScoreTeamId;
+            localStorage.setItem('nextEnabledTeamIndex', '-1');
+        }
+    }
     if (round === '3-6-9' && !reachedThreeSixNineTurnCap) {
         const anyTeamMarked = teams.some(team => localStorage.getItem(`team${team.i}Started`) === '1');
         if (!anyTeamMarked) {
@@ -943,6 +990,12 @@ function renderTeams() {
         const sortedByScoreDesc = [...teams].sort((a, b) => b.score - a.score);
         const topFinalists = sortedByScoreDesc.slice(0, 2);
         const finalistIds = new Set(topFinalists.map(team => team.i));
+        if (!finaleSetupComplete) {
+            if (typeof resetAllTeamDoneFlags === 'function') {
+                resetAllTeamDoneFlags();
+            }
+            localStorage.setItem(finaleSetupKey, '1');
+        }
         teams.forEach(team => {
             const shouldBeVisible = finalistIds.has(team.i);
             const visibilityKey = `visibleTeam${team.i}`;
@@ -1075,12 +1128,15 @@ function renderTeams() {
                 enableSub = visible && activeTeamIndex !== -1 && activeTeamIndex !== (i - 1);
             }
         }
+        if (finaleVictoryLocked) {
+            enable10 = enable20 = enable30 = enable40 = enable50 = enableSub = false;
+        }
         if (threeSixNineScoreWindow) {
             enable10 = true;
         }
         const enable15 = inEditMode ? true : (round === 'GALLERIJ' && canScoreThisRow);
-        const shouldDisableStart = disableStartStop || rowLocked || !enableRow || enforceSingleStart || threeSixNineScoreWindow;
-        const shouldDisableSkip = disableStartStop || rowLocked || !enableRow || enforceSingleStart;
+        const shouldDisableStart = disableStartStop || rowLocked || !enableRow || enforceSingleStart || threeSixNineScoreWindow || finaleVictoryLocked;
+        const shouldDisableSkip = disableStartStop || rowLocked || !enableRow || enforceSingleStart || finaleVictoryLocked;
         const startBtnBg = shouldDisableStart ? '#222222' : (round === '3-6-9' ? '#007a26' : (isActiveTeam ? 'red' : enableRow ? 'darkblue' : '#222222'));
         const showSkipButton = !inEditMode && round === '3-6-9' && !showNameOnlyBeforeStart;
         const skipBtnBg = shouldDisableSkip ? '#222222' : '#8b1a1a';
@@ -1099,10 +1155,13 @@ function renderTeams() {
         const visibilityLockAttrs = visibilityLocked ? 'data-locked="true" tabindex="-1" aria-disabled="true"' : '';
         const visibilityAccentColor = inEditMode ? '#2222aa' : 'darkorange';
         const visibilityPointerStyle = visibilityLocked ? 'pointer-events: none;' : '';
+        const nameBgColor = (finaleVictoryLocked && finaleWinnerTeamId === i)
+            ? '#0a8f32'
+            : (rowLocked ? '#222222' : '#fea400');
         row.innerHTML = `
             <div class='team-row-inner' style="margin-bottom: -4px;">
             <span class='col-visible'><input type="checkbox" id="visibleTeam${i}" ${visible ? "checked" : ""} ${visibilityLockAttrs} style="width: 38px; height: 38px; transform: scale(1.8); accent-color: ${visibilityAccentColor}; margin-right: 24px; ${visibilityPointerStyle}"/></span>
-                <span class='col-name'><input id="nameTeam${i}" value="${name}" class="${rowLocked ? 'stopped-team-name' : ''}" style="background-color: ${rowLocked ? '#222222' : '#fea400'}; color: black; font-size: 1.3em; padding: 14px 10px; min-width: 180px; max-width: 320px; min-height: 65px; width: 100%;" ${(round !== 'EDIT MODE') ? 'disabled' : ''}/></span>
+                <span class='col-name'><input id="nameTeam${i}" value="${name}" class="${rowLocked ? 'stopped-team-name' : ''}" style="background-color: ${nameBgColor}; color: black; font-size: 1.3em; padding: 14px 10px; min-width: 180px; max-width: 320px; min-height: 65px; width: 100%;" ${(round !== 'EDIT MODE') ? 'disabled' : ''}/></span>
                 <span class='col-buttons' style="${controlsHiddenStyle}">
                     <button id="startTeam${i}" style="background-color: ${startBtnBg}; color: white; font-size: 1.1em; padding: 18px 10px; min-width: ${startButtonWidth}px; width: ${startButtonWidth}px; min-height: 60px; margin-left: 2px; margin-right: 6px;" ${shouldDisableStart ? 'disabled' : ''}>${startButtonLabel}</button>
                     ${showSkipButton ? `<button id="skipTeam${i}" style="background-color: ${skipBtnBg}; color: white; font-size: 1.1em; padding: 18px 10px; min-width: 60px; width: 60px; min-height: 60px; margin-right: 12px; border-radius: 8px;" ${shouldDisableSkip ? 'disabled' : ''}>&#10007;</button>` : ''}
@@ -1639,8 +1698,25 @@ function renderTeams() {
             localStorage.setItem(scoreKey, score);
             const input = document.getElementById(`scoreTeam${teamId}`);
             if (input) input.value = score;
+            const currentRoundLabel = document.getElementById('roundLabel');
+            const currentRoundName = currentRoundLabel ? currentRoundLabel.textContent.trim() : '';
+            let triggeredFinaleVictory = false;
+            if (currentRoundName === 'FINALE') {
+                const storedWinnerId = parseInt(localStorage.getItem('finaleWinnerTeamId') || '-1', 10);
+                if (score === 0 && storedWinnerId === -1) {
+                    const opponent = teams.find(team => team.visible && team.i !== teamId);
+                    if (opponent) {
+                        localStorage.setItem('finaleZeroTeamId', String(teamId));
+                        localStorage.setItem('finaleWinnerTeamId', String(opponent.i));
+                        triggeredFinaleVictory = true;
+                    }
+                }
+            }
             // Trigger a dummy update to force quiz page to refresh
             localStorage.setItem('adminUpdate', Date.now());
+            if (triggeredFinaleVictory && typeof window.renderTeams === 'function') {
+                window.renderTeams();
+            }
         }
         // DONE button: turn gray when clicked, disable START button
         const checkBtn = document.getElementById(`checkTeam${i}`);
