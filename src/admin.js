@@ -215,10 +215,10 @@ function renderTeams() {
     const round = roundLabel ? roundLabel.textContent.trim() : '';
     const trackedRoundName = localStorage.getItem(START_CHECK_ROUND_KEY);
     const shouldTrackRound = round && round !== 'EDIT MODE';
-    if (shouldTrackRound && trackedRoundName && trackedRoundName !== round) {
-        resetAllTeamStartFlags();
-    }
     if (shouldTrackRound) {
+        if (trackedRoundName && trackedRoundName !== round) {
+            resetAllTeamStartFlags();
+        }
         localStorage.setItem(START_CHECK_ROUND_KEY, round);
     }
     const finaleSetupKey = 'finaleSetupComplete';
@@ -907,7 +907,7 @@ function renderTeams() {
         });
         return lowestTeamId;
     };
-    let finaleLowestScoreTeamId = round === 'FINALE' ? getFinLowestEligible() : -1;
+    let finaleLowestScoreTeamId = -1;
     let finaleZeroScoreTeamId = -1;
     let finaleWinnerTeamId = -1;
     let finaleVictoryLocked = false;
@@ -941,13 +941,6 @@ function renderTeams() {
     } else {
         localStorage.removeItem('finaleWinnerTeamId');
         localStorage.removeItem('finaleZeroTeamId');
-    }
-    if (round === 'FINALE' && !isEditModeRound && finaleLowestScoreTeamId !== -1) {
-        if (pendingStartTeamId === -1 && currentTeam === -1) {
-            localStorage.setItem('pendingStartTeamId', String(finaleLowestScoreTeamId));
-            pendingStartTeamId = finaleLowestScoreTeamId;
-            localStorage.setItem('nextEnabledTeamIndex', '-1');
-        }
     }
     if (round === '3-6-9' && !reachedThreeSixNineTurnCap) {
         const anyTeamMarked = teams.some(team => localStorage.getItem(`team${team.i}Started`) === '1');
@@ -1000,6 +993,9 @@ function renderTeams() {
         localStorage.setItem('puzzelThirtyCount', '0');
     }
     if (round === 'FINALE') {
+        if (trackedRoundName && trackedRoundName !== 'FINALE') {
+            resetAllTeamDoneFlags();
+        }
         const sortedByScoreDesc = [...teams].sort((a, b) => b.score - a.score);
         const topFinalists = sortedByScoreDesc.slice(0, 2);
         const finalistIds = new Set(topFinalists.map(team => team.i));
@@ -1018,6 +1014,14 @@ function renderTeams() {
             }
             team.visible = shouldBeVisible;
         });
+        finaleLowestScoreTeamId = getFinLowestEligible();
+        if (!isEditModeRound && finaleLowestScoreTeamId !== -1) {
+            if (pendingStartTeamId === -1 && currentTeam === -1) {
+                localStorage.setItem('pendingStartTeamId', String(finaleLowestScoreTeamId));
+                pendingStartTeamId = finaleLowestScoreTeamId;
+                localStorage.setItem('nextEnabledTeamIndex', '-1');
+            }
+        }
     }
     // Always sort teams by score (lowest first) in COLLEC. GEH. round
     if (!isEditModeRound) {
