@@ -116,6 +116,7 @@ if (!document.getElementById('admin-score-spin-style')) {
 }
 
 const MAX_TEAMS = 9;
+const START_CHECK_ROUND_KEY = 'startCheckRoundName';
 
 function getTeamAddCount(teamId) {
     const raw = localStorage.getItem(`team${teamId}AddCount`);
@@ -154,6 +155,7 @@ function resetAllTeamStartFlags() {
     }
     localStorage.removeItem('startCheckTurn');
     localStorage.removeItem('pendingStartTeamId');
+    localStorage.removeItem(START_CHECK_ROUND_KEY);
 }
 
 function resetAllTeamDoneFlags() {
@@ -211,6 +213,14 @@ function renderTeams() {
     let teams = []; // Initialize teams array
     const roundLabel = document.getElementById('roundLabel');
     const round = roundLabel ? roundLabel.textContent.trim() : '';
+    const trackedRoundName = localStorage.getItem(START_CHECK_ROUND_KEY);
+    const shouldTrackRound = round && round !== 'EDIT MODE';
+    if (shouldTrackRound && trackedRoundName && trackedRoundName !== round) {
+        resetAllTeamStartFlags();
+    }
+    if (shouldTrackRound) {
+        localStorage.setItem(START_CHECK_ROUND_KEY, round);
+    }
     const finaleSetupKey = 'finaleSetupComplete';
     const finaleSetupComplete = localStorage.getItem(finaleSetupKey) === '1';
     if (round !== 'FINALE' && finaleSetupComplete) {
@@ -500,14 +510,17 @@ function renderTeams() {
         localStorage.setItem('puzzelThirtyCount', '0');
         localStorage.setItem('gallerijFifteenCount', '0');
         localStorage.setItem('collecFiftyCount', '0');
-        if (typeof resetAllTeamStartFlags === 'function') {
-            resetAllTeamStartFlags();
-        } else {
-            for (let idx = 1; idx <= MAX_TEAMS; idx++) {
-                localStorage.removeItem(`team${idx}Started`);
+        const shouldPreserveStartChecks = ['OPEN DEUR', 'PUZZEL', 'GALLERIJ', 'COLLEC. GEH.'].includes(round);
+        if (!shouldPreserveStartChecks) {
+            if (typeof resetAllTeamStartFlags === 'function') {
+                resetAllTeamStartFlags();
+            } else {
+                for (let idx = 1; idx <= MAX_TEAMS; idx++) {
+                    localStorage.removeItem(`team${idx}Started`);
+                }
+                localStorage.removeItem('startCheckTurn');
+                localStorage.removeItem('pendingStartTeamId');
             }
-            localStorage.removeItem('startCheckTurn');
-            localStorage.removeItem('pendingStartTeamId');
         }
         const teamsSnapshot = [];
         let firstAvailableIndex = -1;
