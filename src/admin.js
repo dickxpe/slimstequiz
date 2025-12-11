@@ -281,6 +281,7 @@ function alignScoreHeaderToScoreInputs() {
     scoreLabel.style.left = `${offset}px`;
     scoreLabel.style.top = '12px';
     scoreLabel.style.marginLeft = '0';
+    scoreLabel.style.transition = 'none';
 }
 
 function ensureScoreHeaderResizeBinding() {
@@ -915,7 +916,6 @@ function renderTeams() {
                 margin-left: 346px;
                 font-size: 1em;
                 letter-spacing: 1px;
-                transition: margin-left 0.2s ease;
             }
             @media (max-width: 1100px) {
                 .col-score-label {
