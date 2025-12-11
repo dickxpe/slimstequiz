@@ -1013,6 +1013,12 @@ function renderTeams() {
                 localStorage.setItem(visibilityKey, shouldBeVisible ? '1' : '0');
             }
             team.visible = shouldBeVisible;
+            if (shouldBeVisible) {
+                const doneKey = `team${team.i}Done`;
+                if (localStorage.getItem(doneKey) !== '0') {
+                    localStorage.setItem(doneKey, '0');
+                }
+            }
         });
         finaleLowestScoreTeamId = getFinLowestEligible();
         if (!isEditModeRound && finaleLowestScoreTeamId !== -1) {
