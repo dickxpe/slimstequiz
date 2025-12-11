@@ -117,6 +117,7 @@ if (!document.getElementById('admin-score-spin-style')) {
 
 const MAX_TEAMS = 9;
 const START_CHECK_ROUND_KEY = 'startCheckRoundName';
+const ADMIN_TITLE_PARTS = ['De', 'Slimste', 'Quiz'];
 const ROUND_COUNTER_CONFIG = {
     'OPEN DEUR': ['openDeurTwentyCount'],
     'PUZZEL': ['puzzelThirtyCount'],
@@ -184,6 +185,85 @@ function resetAllTeamAddCounts() {
         }
         setTeamAddCount(i, 0);
     }
+}
+
+function resetTeamAddCountersForTurnIncrement(currentRound) {
+    if (currentRound === '3-6-9') {
+        return;
+    }
+    resetAllTeamAddCounts();
+}
+
+function ensureAdminTitleStyles() {
+    if (document.getElementById('admin-quiz-title-style')) {
+        return;
+    }
+    const style = document.createElement('style');
+    style.id = 'admin-quiz-title-style';
+    style.innerHTML = `
+        @font-face {
+            font-family: 'Hello';
+            src: url('styles/Hello.otf') format('opentype');
+            font-weight: normal;
+            font-style: normal;
+        }
+        #adminQuizTitle {
+            width: 100%;
+            display: flex;
+            justify-content: flex-start;
+            align-items: flex-end;
+            gap: 18px;
+            margin: 24px 40px 8px;
+            pointer-events: none;
+            text-align: center;
+            z-index: 5;
+        }
+        #adminQuizTitle span {
+            text-shadow:
+                0 0 4px #001a66,
+                0 1px 4px #001a66,
+                0 -1px 4px #001a66,
+                1px 0 4px #001a66,
+                -1px 0 4px #001a66,
+                0 1px 0 #fff;
+        }
+        #adminQuizTitle .admin-quiz-header-1,
+        #adminQuizTitle .admin-quiz-header-3 {
+            font-family: 'DIN Black Regular', Arial, sans-serif;
+            font-size: 2em;
+            color: #ffffff;
+            letter-spacing: 2px;
+            display: flex;
+            align-items: center;
+            transform: translateY(-22px);
+        }
+        #adminQuizTitle .admin-quiz-header-2 {
+            font-family: 'Hello', cursive !important;
+            font-size: 5em;
+            color: #ffffff;
+            letter-spacing: 2px;
+            line-height: 0.9;
+        }
+    `;
+    document.head.appendChild(style);
+}
+
+function updateAdminQuizTitle(shouldShow) {
+    ensureAdminTitleStyles();
+    let header = document.getElementById('adminQuizTitle');
+    if (!header) {
+        header = document.createElement('div');
+        header.id = 'adminQuizTitle';
+        header.innerHTML = `
+            <span class="admin-quiz-header-1">${ADMIN_TITLE_PARTS[0]}</span>
+            <span class="admin-quiz-header-2">${ADMIN_TITLE_PARTS[1]}</span>
+            <span class="admin-quiz-header-3">${ADMIN_TITLE_PARTS[2]}</span>
+        `;
+        const mainContainer = document.getElementById('mainContentContainer');
+        const mountTarget = (mainContainer && mainContainer.parentElement) || document.body;
+        mountTarget.insertBefore(header, mountTarget.firstChild);
+    }
+    header.style.display = shouldShow ? 'flex' : 'none';
 }
 
 function resetAllTeamStartFlags() {
@@ -474,10 +554,14 @@ function renderTeams() {
             const adjustCounter = (delta) => {
                 let base = parseInt(localStorage.getItem('nextTurnCount'));
                 if (isNaN(base) || base < 1) base = 1;
+                const previousValue = base;
                 base += delta;
                 if (base < 1) base = 1;
                 localStorage.setItem('nextTurnCount', String(base));
                 refreshNextTurnCounterDisplay();
+                if (base > previousValue) {
+                    resetTeamAddCountersForTurnIncrement(round);
+                }
                 renderTeamsDebounced();
             };
 
@@ -546,6 +630,7 @@ function renderTeams() {
         }
         localStorage.setItem('nextTurnCount', String(currentCount + 1));
         refreshNextTurnCounterDisplay();
+        resetTeamAddCountersForTurnIncrement(round);
         resetRoundCounters();
         const shouldPreserveStartChecks = ['OPEN DEUR', 'PUZZEL', 'GALLERIJ', 'COLLEC. GEH.'].includes(round);
         if (!shouldPreserveStartChecks) {
@@ -762,6 +847,7 @@ function renderTeams() {
         document.head.appendChild(style);
     }
     const showNameOnlyBeforeStart = !quizStarted;
+    updateAdminQuizTitle(showNameOnlyBeforeStart);
     const headerRow = document.createElement("div");
     headerRow.className = "team-header-row";
     headerRow.innerHTML = `
@@ -1473,6 +1559,7 @@ function renderTeams() {
             };
 
             if (round === '3-6-9') {
+                incrementTeamAddCount(i);
                 runStartLogic(true);
                 return;
             }
