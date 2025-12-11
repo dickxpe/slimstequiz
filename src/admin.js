@@ -127,6 +127,7 @@ const ROUND_COUNTER_CONFIG = {
 const ALL_ROUND_COUNTER_KEYS = Array.from(
     new Set(Object.values(ROUND_COUNTER_CONFIG).flat())
 );
+let scoreHeaderResizeBindingAttached = false;
 
 function debounce(fn, wait = 50) {
     let timeoutId;
@@ -264,6 +265,32 @@ function updateAdminQuizTitle(shouldShow) {
         mountTarget.insertBefore(header, mountTarget.firstChild);
     }
     header.style.display = shouldShow ? 'flex' : 'none';
+}
+
+function alignScoreHeaderToScoreInputs() {
+    const headerRow = document.querySelector('.team-header-row-inner');
+    const scoreLabel = headerRow ? headerRow.querySelector('.col-score-label') : null;
+    const firstScoreWrapper = document.querySelector('.team-row-inner .score-input-wrapper');
+    if (!headerRow || !scoreLabel || !firstScoreWrapper) {
+        return;
+    }
+    const headerRect = headerRow.getBoundingClientRect();
+    const targetRect = firstScoreWrapper.getBoundingClientRect();
+    const offset = Math.max(0, targetRect.left - headerRect.left + 24);
+    scoreLabel.style.position = 'absolute';
+    scoreLabel.style.left = `${offset}px`;
+    scoreLabel.style.top = '12px';
+    scoreLabel.style.marginLeft = '0';
+}
+
+function ensureScoreHeaderResizeBinding() {
+    if (scoreHeaderResizeBindingAttached) {
+        return;
+    }
+    scoreHeaderResizeBindingAttached = true;
+    window.addEventListener('resize', () => {
+        window.requestAnimationFrame(alignScoreHeaderToScoreInputs);
+    });
 }
 
 function resetAllTeamStartFlags() {
@@ -870,6 +897,9 @@ function renderTeams() {
                 width: 99vw;
                 box-sizing: border-box;
             }
+            .team-header-row-inner {
+                position: relative;
+            }
             .team-header-row-inner span, .team-row-inner span {
                 display: flex;
                 align-items: center;
@@ -881,7 +911,27 @@ function renderTeams() {
             .col-name { min-width: 150px; max-width: 340px; flex: 2 1 280px; text-align: left; }
             .col-name-header { margin-left: 10px; }
             .col-actions {min-width: 120px; flex: 2 1 120px; flex-wrap: nowrap; justify-content: flex-start; margin-left: 60px; gap: 18px; }
-            .col-score-label {margin-left: 346px; font-size: 1em; letter-spacing: 1px; }
+            .col-score-label {
+                margin-left: 346px;
+                font-size: 1em;
+                letter-spacing: 1px;
+                transition: margin-left 0.2s ease;
+            }
+            @media (max-width: 1100px) {
+                .col-score-label {
+                    margin-left: 200px;
+                }
+            }
+            @media (max-width: 820px) {
+                .col-score-label {
+                    margin-left: 80px;
+                }
+            }
+            @media (max-width: 620px) {
+                .col-score-label {
+                    margin-left: 24px;
+                }
+            }
             .team-row-inner span.team-add-counter {
                 background: rgba(255,255,255,0.12);
                 border-radius: 14px;
@@ -929,13 +979,14 @@ function renderTeams() {
         <div class='team-header-row-inner'>
             <span class='col-visible'>&#128065;</span>
             <span class='col-name'><span class="col-name-header">TEAM NAAM</span></span>
-            <span class='col-actions' style="margin-left: 20px; ${showNameOnlyBeforeStart ? 'display:none;' : ''}">ACTIES
+            <span class='col-actions' style="margin-left: 12px; ${showNameOnlyBeforeStart ? 'display:none;' : ''}">ACTIES
                 <button id="editRoundBtn">BEWERK</button>
                 <span class='col-score-label'>SCORE</span>
             </span>
         </div>
     `;
     container.appendChild(headerRow);
+    ensureScoreHeaderResizeBinding();
     // Attach edit button logic
     setTimeout(() => {
         const editBtn = document.getElementById('editRoundBtn');
@@ -1355,6 +1406,7 @@ function renderTeams() {
             collButtonHandler(4, btn50, '+50');
         }
     });
+    window.requestAnimationFrame(alignScoreHeaderToScoreInputs);
     // Animate row reordering using FLIP technique
     requestAnimationFrame(() => {
         newRowElements.forEach(row => {
