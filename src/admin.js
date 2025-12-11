@@ -52,7 +52,7 @@ document.getElementById("addTeamBtn").onclick = function () {
             localStorage.setItem("visibleTeam" + i, "1");
             localStorage.setItem(`team${i}AddCount`, '0');
             localStorage.removeItem(`team${i}Started`);
-            renderTeams();
+            renderTeamsDebounced();
             break;
         }
     }
@@ -117,6 +117,43 @@ if (!document.getElementById('admin-score-spin-style')) {
 
 const MAX_TEAMS = 9;
 const START_CHECK_ROUND_KEY = 'startCheckRoundName';
+const ROUND_COUNTER_CONFIG = {
+    'OPEN DEUR': ['openDeurTwentyCount'],
+    'PUZZEL': ['puzzelThirtyCount'],
+    'GALLERIJ': ['gallerijFifteenCount'],
+    'COLLEC. GEH.': ['collecFiftyCount', 'collProgress']
+};
+const ALL_ROUND_COUNTER_KEYS = Array.from(
+    new Set(Object.values(ROUND_COUNTER_CONFIG).flat())
+);
+
+function debounce(fn, wait = 50) {
+    let timeoutId;
+    return function debounced(...args) {
+        const run = () => {
+            timeoutId = undefined;
+            fn.apply(this, args);
+        };
+        clearTimeout(timeoutId);
+        timeoutId = setTimeout(run, wait);
+    };
+}
+
+function resetRoundCounters() {
+    ALL_ROUND_COUNTER_KEYS.forEach((key) => localStorage.setItem(key, '0'));
+}
+
+function ensureRoundCounterDefaults(currentRound) {
+    Object.entries(ROUND_COUNTER_CONFIG).forEach(([roundName, keys]) => {
+        keys.forEach((key) => {
+            if (currentRound !== roundName) {
+                localStorage.setItem(key, '0');
+            } else if (localStorage.getItem(key) === null) {
+                localStorage.setItem(key, '0');
+            }
+        });
+    });
+}
 
 function getTeamAddCount(teamId) {
     const raw = localStorage.getItem(`team${teamId}AddCount`);
@@ -201,10 +238,14 @@ function applyNextTurnState() {
 
 function executeNextTurnLogic() {
     applyNextTurnState();
-    if (window.renderTeams) window.renderTeams();
+    renderTeamsDebounced();
 }
 
 window.executeNextTurnLogic = executeNextTurnLogic;
+
+const renderTeamsDebounced = debounce(() => {
+    renderTeams();
+}, 50);
 
 function renderTeams() {
     // Build teams array before any usage
@@ -437,7 +478,7 @@ function renderTeams() {
                 if (base < 1) base = 1;
                 localStorage.setItem('nextTurnCount', String(base));
                 refreshNextTurnCounterDisplay();
-                if (window.renderTeams) window.renderTeams();
+                renderTeamsDebounced();
             };
 
             const upBtn = makeSpinButton('nextTurnCounterSpinUp', '+');
@@ -505,11 +546,7 @@ function renderTeams() {
         }
         localStorage.setItem('nextTurnCount', String(currentCount + 1));
         refreshNextTurnCounterDisplay();
-        localStorage.setItem('collProgress', '0');
-        localStorage.setItem('openDeurTwentyCount', '0');
-        localStorage.setItem('puzzelThirtyCount', '0');
-        localStorage.setItem('gallerijFifteenCount', '0');
-        localStorage.setItem('collecFiftyCount', '0');
+        resetRoundCounters();
         const shouldPreserveStartChecks = ['OPEN DEUR', 'PUZZEL', 'GALLERIJ', 'COLLEC. GEH.'].includes(round);
         if (!shouldPreserveStartChecks) {
             if (typeof resetAllTeamStartFlags === 'function') {
@@ -557,7 +594,7 @@ function renderTeams() {
             localStorage.removeItem('pendingStartTeamId');
             localStorage.setItem('nextEnabledTeamIndex', firstAvailableIndex);
         }
-        if (window.renderTeams) window.renderTeams();
+        renderTeamsDebounced();
     };
 
     const maybeAdvanceStageRoundIfAllTeamsDone = () => {
@@ -574,21 +611,7 @@ function renderTeams() {
             }
         }
         if (!hasVisibleTeam) return false;
-        if (round === 'OPEN DEUR') {
-            localStorage.setItem('openDeurTwentyCount', '0');
-        } else if (round === 'PUZZEL') {
-            localStorage.setItem('puzzelThirtyCount', '0');
-        } else if (round === 'GALLERIJ') {
-            localStorage.setItem('gallerijFifteenCount', '0');
-        } else if (round === 'COLLEC. GEH.') {
-            localStorage.setItem('collProgress', '0');
-            localStorage.setItem('collecFiftyCount', '0');
-        } else if (round === 'FINALE') {
-            localStorage.setItem('openDeurTwentyCount', '0');
-            localStorage.setItem('puzzelThirtyCount', '0');
-            localStorage.setItem('gallerijFifteenCount', '0');
-            localStorage.setItem('collecFiftyCount', '0');
-        }
+        resetRoundCounters();
         localStorage.setItem('currentTeam', -1);
         localStorage.setItem('nextEnabledTeamIndex', '-1');
         localStorage.removeItem('pendingStartTeamId');
@@ -861,7 +884,7 @@ function renderTeams() {
                     let currentRound = roundLabel ? roundLabel.textContent.trim() : '';
                     if (editBtn) editBtn.textContent = (currentRound === 'EDIT MODE') ? 'STOP BEWERKEN' : 'BEWERK';
                 }, 10);
-                renderTeams();
+                renderTeamsDebounced();
             };
             // Set button text on initial render to match mode
             const roundLabel = document.getElementById('roundLabel');
@@ -967,31 +990,7 @@ function renderTeams() {
             }
         }
     }
-    if (round !== 'OPEN DEUR') {
-        localStorage.setItem('openDeurTwentyCount', '0');
-    } else if (localStorage.getItem('openDeurTwentyCount') === null) {
-        localStorage.setItem('openDeurTwentyCount', '0');
-    }
-    if (round !== 'PUZZEL') {
-        localStorage.setItem('puzzelThirtyCount', '0');
-    } else if (localStorage.getItem('puzzelThirtyCount') === null) {
-        localStorage.setItem('puzzelThirtyCount', '0');
-    }
-    if (round !== 'GALLERIJ') {
-        localStorage.setItem('gallerijFifteenCount', '0');
-    } else if (localStorage.getItem('gallerijFifteenCount') === null) {
-        localStorage.setItem('gallerijFifteenCount', '0');
-    }
-    if (round !== 'COLLEC. GEH.') {
-        localStorage.setItem('collecFiftyCount', '0');
-    } else if (localStorage.getItem('collecFiftyCount') === null) {
-        localStorage.setItem('collecFiftyCount', '0');
-    }
-    if (round !== 'PUZZEL') {
-        localStorage.setItem('puzzelThirtyCount', '0');
-    } else if (localStorage.getItem('puzzelThirtyCount') === null) {
-        localStorage.setItem('puzzelThirtyCount', '0');
-    }
+    ensureRoundCounterDefaults(round);
     if (round === 'FINALE') {
         if (trackedRoundName && trackedRoundName !== 'FINALE') {
             resetAllTeamDoneFlags();
@@ -1333,7 +1332,7 @@ function renderTeams() {
                 titleLabel.style.display = 'none';
             }
             window.open('src/quiz.html', '_blank', 'location=no,menubar=no,scrollbars=no,status=no,toolbar=no');
-            renderTeams(); // re-render to show STOP button and hide add row
+            renderTeamsDebounced(); // queue re-render to show STOP button and hide add row
         };
     }
     // Always show teamsContainer if there are teams
@@ -1387,7 +1386,7 @@ function renderTeams() {
             if (roundLabel && roundLabel.textContent.trim() === 'COLLEC. GEH.') {
                 localStorage.setItem('collecGehSort', '1');
             }
-            renderTeams();
+            renderTeamsDebounced();
             // Reset sort flag after rendering so it only sorts once
             if (roundLabel && roundLabel.textContent.trim() === 'COLLEC. GEH.') {
                 localStorage.setItem('collecGehSort', '0');
@@ -1470,7 +1469,7 @@ function renderTeams() {
                         }
                     }
                 }
-                renderTeams();
+                renderTeamsDebounced();
             };
 
             if (round === '3-6-9') {
@@ -1520,7 +1519,7 @@ function renderTeams() {
                 if (maybeAdvanceStageRoundIfAllTeamsDone()) {
                     return;
                 }
-                renderTeams();
+                renderTeamsDebounced();
             } else {
                 runStartLogic();
             }
@@ -1572,7 +1571,7 @@ function renderTeams() {
                         refreshNextTurnCounterDisplay();
                     }
                 }
-                renderTeams();
+                renderTeamsDebounced();
             };
         }
         // Remove generic addTeam button handlers to avoid overwriting COLLEC. GEH. progressive logic
@@ -1606,9 +1605,7 @@ function renderTeams() {
                             if (typeof refreshNextTurnCounterDisplay === 'function') {
                                 refreshNextTurnCounterDisplay();
                             }
-                            if (typeof window.renderTeams === 'function') {
-                                window.renderTeams();
-                            }
+                            renderTeamsDebounced();
                         }
                     };
                 }
@@ -1737,8 +1734,8 @@ function renderTeams() {
             }
             // Trigger a dummy update to force quiz page to refresh
             localStorage.setItem('adminUpdate', Date.now());
-            if (triggeredFinaleVictory && typeof window.renderTeams === 'function') {
-                window.renderTeams();
+            if (triggeredFinaleVictory) {
+                renderTeamsDebounced();
             }
         }
         // DONE button: turn gray when clicked, disable START button
@@ -1768,7 +1765,7 @@ function renderTeams() {
                 });
                 localStorage.setItem('currentTeam', -1);
                 // Re-render teams to update order and button state
-                renderTeams();
+                renderTeamsDebounced();
             };
         }
     }
@@ -1854,7 +1851,7 @@ function reset() {
 function stop() {
     localStorage.setItem("currentTeam", -1);
     // Do NOT set quizStarted to '0' so teams remain visible
-    renderTeams(); // re-render to keep STOP button and teams visible
+    renderTeamsDebounced(); // queue re-render to keep STOP button and teams visible
 }
 
 //Team1
@@ -1907,7 +1904,7 @@ function change2() {
 function start2() {
     localStorage.setItem("currentTeam", -1);
     // Do NOT set quizStarted to '0' so STOP and teams remain visible
-    renderTeams(); // re-render teams, but keep STOP and teams visible
+    renderTeamsDebounced(); // queue re-render teams, but keep STOP and teams visible
     document.getElementById("nameTeam3").style.backgroundColor = "darkorange";
     document.getElementById("nameTeam4").style.backgroundColor = "darkorange";
     document.getElementById("scoreTeam1").style.backgroundColor = "darkorange";
