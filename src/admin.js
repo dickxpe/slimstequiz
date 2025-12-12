@@ -4,7 +4,7 @@ if (!document.getElementById('admin-gradient-bg-style')) {
     style.id = 'admin-gradient-bg-style';
     style.innerHTML = `
             body {
-                background: linear-gradient(180deg, orange 0%, darkred 100%) !important;
+                background: linear-gradient(90deg, #96171e 0%, #d8522f 100%) !important;
             }
         `;
     document.head.appendChild(style);
@@ -117,6 +117,7 @@ if (!document.getElementById('admin-score-spin-style')) {
 
 const MAX_TEAMS = 9;
 const START_CHECK_ROUND_KEY = 'startCheckRoundName';
+const FINALE_FINALIST_IDS_KEY = 'finaleFinalistIds';
 const ADMIN_TITLE_PARTS = ['De', 'Slimste', 'Quiz'];
 const ROUND_COUNTER_CONFIG = {
     'OPEN DEUR': ['openDeurTwentyCount'],
@@ -294,6 +295,46 @@ function ensureScoreHeaderResizeBinding() {
     });
 }
 
+function sortTeamsForRound(teams, round, isEditModeRound) {
+    if (isEditModeRound) {
+        return;
+    }
+
+    const byStableId = (a, b) => a.i - b.i;
+    const visibleFirst = (a, b) => {
+        const aVisible = !!a.visible;
+        const bVisible = !!b.visible;
+        if (aVisible !== bVisible) {
+            return aVisible ? -1 : 1;
+        }
+        return 0;
+    };
+
+    const visibleScoreAsc = (a, b) => {
+        const vis = visibleFirst(a, b);
+        if (vis !== 0) return vis;
+        if (!a.visible && !b.visible) return byStableId(a, b);
+        const diff = a.score - b.score;
+        return diff !== 0 ? diff : byStableId(a, b);
+    };
+
+    const visibleScoreDesc = (a, b) => {
+        const vis = visibleFirst(a, b);
+        if (vis !== 0) return vis;
+        if (!a.visible && !b.visible) return byStableId(a, b);
+        const diff = b.score - a.score;
+        return diff !== 0 ? diff : byStableId(a, b);
+    };
+
+    if (round === 'COLLEC. GEH.') {
+        teams.sort(visibleScoreAsc);
+    } else if (round === 'FINALE') {
+        teams.sort(visibleScoreDesc);
+    } else if (round !== '3-6-9') {
+        teams.sort(visibleScoreAsc);
+    }
+}
+
 function resetAllTeamStartFlags() {
     for (let i = 1; i <= MAX_TEAMS; i++) {
         localStorage.removeItem(`team${i}Started`);
@@ -374,6 +415,7 @@ function renderTeams() {
     const finaleSetupComplete = localStorage.getItem(finaleSetupKey) === '1';
     if (round !== 'FINALE' && finaleSetupComplete) {
         localStorage.removeItem(finaleSetupKey);
+        localStorage.removeItem(FINALE_FINALIST_IDS_KEY);
     }
     const isEditModeRound = round === 'EDIT MODE';
     const THREE_SIX_NINE_MAX_TURNS = 12;
@@ -711,7 +753,7 @@ function renderTeams() {
     };
 
     const maybeAdvanceStageRoundIfAllTeamsDone = () => {
-        const stageRounds = ['OPEN DEUR', 'PUZZEL', 'GALLERIJ', 'COLLEC. GEH.', 'FINALE'];
+        const stageRounds = ['OPEN DEUR', 'PUZZEL', 'GALLERIJ', 'COLLEC. GEH.'];
         if (!stageRounds.includes(round)) return false;
         let hasVisibleTeam = false;
         for (let idx = 1; idx <= MAX_TEAMS; idx++) {
@@ -900,6 +942,7 @@ function renderTeams() {
             }
             .team-header-row-inner {
                 position: relative;
+                color: #ffffff;
             }
             .team-header-row-inner span, .team-row-inner span {
                 display: flex;
@@ -1012,7 +1055,73 @@ function renderTeams() {
                     let lastRoundIndex = parseInt(localStorage.getItem('lastRoundIndex'));
                     if (!isNaN(lastRoundIndex)) {
                         localStorage.setItem('editMode', '0');
-                        if (roundLabel) roundLabel.textContent = roundNames[lastRoundIndex];
+                        const restoredRound = roundNames[lastRoundIndex];
+                        if (roundLabel) roundLabel.textContent = restoredRound;
+
+                        if (restoredRound === 'FINALE') {
+                            // Leaving edit mode in the finale should restart the cycle:
+                            // reset turn counter and enable the lowest-score finalist.
+                            localStorage.setItem('nextTurnCount', '1');
+                            if (typeof refreshNextTurnCounterDisplay === 'function') {
+                                refreshNextTurnCounterDisplay();
+                            }
+
+                            localStorage.setItem('currentTeam', '-1');
+                            localStorage.setItem('nextEnabledTeamIndex', '-1');
+                            localStorage.removeItem('pendingStartTeamId');
+
+                            // Editing scores should clear any locked winner state.
+                            localStorage.removeItem('finaleWinnerTeamId');
+                            localStorage.removeItem('finaleZeroTeamId');
+
+                            // Resolve finalists from the locked finale selection.
+                            let finalistIds = [];
+                            const storedFinalistsRaw = localStorage.getItem(FINALE_FINALIST_IDS_KEY);
+                            if (storedFinalistsRaw) {
+                                try {
+                                    const parsed = JSON.parse(storedFinalistsRaw);
+                                    if (Array.isArray(parsed)) {
+                                        finalistIds = parsed.map((value) => parseInt(value, 10)).filter((value) => !isNaN(value));
+                                    }
+                                } catch {
+                                    finalistIds = [];
+                                }
+                            }
+                            if (finalistIds.length !== 2) {
+                                // Fallback: pick the current two visible teams.
+                                const candidates = [];
+                                for (let teamId = 1; teamId <= MAX_TEAMS; teamId++) {
+                                    const teamName = localStorage.getItem(`nameTeam${teamId}`);
+                                    if (!teamName) continue;
+                                    const isVisible = localStorage.getItem(`visibleTeam${teamId}`) !== '0';
+                                    if (!isVisible) continue;
+                                    const scoreRaw = localStorage.getItem(`team${teamId}Score`);
+                                    const score = scoreRaw !== null && !isNaN(Number(scoreRaw)) ? Number(scoreRaw) : 60;
+                                    candidates.push({ id: teamId, score });
+                                }
+                                candidates.sort((a, b) => b.score - a.score);
+                                finalistIds = candidates.slice(0, 2).map((team) => team.id);
+                                if (finalistIds.length === 2) {
+                                    localStorage.setItem(FINALE_FINALIST_IDS_KEY, JSON.stringify(finalistIds));
+                                }
+                            }
+
+                            // Reset done flags for finalists and enable the lowest score.
+                            let lowestId = -1;
+                            let lowestScore = Number.POSITIVE_INFINITY;
+                            finalistIds.forEach((teamId) => {
+                                localStorage.setItem(`team${teamId}Done`, '0');
+                                const scoreRaw = localStorage.getItem(`team${teamId}Score`);
+                                const score = scoreRaw !== null && !isNaN(Number(scoreRaw)) ? Number(scoreRaw) : 60;
+                                if (score < lowestScore) {
+                                    lowestScore = score;
+                                    lowestId = teamId;
+                                }
+                            });
+                            if (lowestId !== -1) {
+                                localStorage.setItem('pendingStartTeamId', String(lowestId));
+                            }
+                        }
                     }
                 }
                 setTimeout(() => {
@@ -1072,16 +1181,34 @@ function renderTeams() {
     let finaleWinnerTeamId = -1;
     let finaleVictoryLocked = false;
     if (round === 'FINALE') {
-        const visibleFinalists = teams.filter(team => team.visible);
         const storedWinnerId = parseInt(localStorage.getItem('finaleWinnerTeamId') || '-1', 10);
         const storedZeroId = parseInt(localStorage.getItem('finaleZeroTeamId') || '-1', 10);
-        const zeroTeam = visibleFinalists.find(team => team.score <= 0);
+
+        const storedFinalistsRaw = localStorage.getItem(FINALE_FINALIST_IDS_KEY);
+        let finaleFinalistIds = [];
+        if (storedFinalistsRaw) {
+            try {
+                const parsed = JSON.parse(storedFinalistsRaw);
+                if (Array.isArray(parsed)) {
+                    finaleFinalistIds = parsed.map((value) => parseInt(value, 10)).filter((value) => !isNaN(value));
+                }
+            } catch {
+                finaleFinalistIds = [];
+            }
+        }
+        const hasLockedFinalists = finaleFinalistIds.length === 2;
+        const finaleFinalists = hasLockedFinalists
+            ? teams.filter((team) => finaleFinalistIds.includes(team.i))
+            : [];
+        const zeroTeam = hasLockedFinalists ? finaleFinalists.find(team => team.score <= 0) : null;
         if (storedWinnerId !== -1) {
             finaleWinnerTeamId = storedWinnerId;
             if (storedZeroId !== -1) {
                 finaleZeroScoreTeamId = storedZeroId;
             } else {
-                const opponent = visibleFinalists.find(team => team.i !== storedWinnerId);
+                const opponent = hasLockedFinalists
+                    ? finaleFinalists.find(team => team.i !== storedWinnerId)
+                    : teams.find(team => team.i !== storedWinnerId);
                 finaleZeroScoreTeamId = opponent ? opponent.i : -1;
                 if (finaleZeroScoreTeamId !== -1) {
                     localStorage.setItem('finaleZeroTeamId', String(finaleZeroScoreTeamId));
@@ -1089,7 +1216,7 @@ function renderTeams() {
             }
             finaleVictoryLocked = true;
         } else if (zeroTeam) {
-            const otherTeam = visibleFinalists.find(team => team.i !== zeroTeam.i);
+            const otherTeam = finaleFinalists.find(team => team.i !== zeroTeam.i);
             if (otherTeam) {
                 finaleWinnerTeamId = otherTeam.i;
                 finaleZeroScoreTeamId = zeroTeam.i;
@@ -1132,9 +1259,29 @@ function renderTeams() {
         if (trackedRoundName && trackedRoundName !== 'FINALE') {
             resetAllTeamDoneFlags();
         }
-        const sortedByScoreDesc = [...teams].sort((a, b) => b.score - a.score);
-        const topFinalists = sortedByScoreDesc.slice(0, 2);
-        const finalistIds = new Set(topFinalists.map(team => team.i));
+        // Freeze the finalist selection when entering the finale.
+        const enteringFinale = trackedRoundName && trackedRoundName !== 'FINALE';
+        const storedFinalistsRaw = localStorage.getItem(FINALE_FINALIST_IDS_KEY);
+        let storedFinalistIds = [];
+        if (storedFinalistsRaw) {
+            try {
+                const parsed = JSON.parse(storedFinalistsRaw);
+                if (Array.isArray(parsed)) {
+                    storedFinalistIds = parsed.map((value) => parseInt(value, 10)).filter((value) => !isNaN(value));
+                }
+            } catch {
+                storedFinalistIds = [];
+            }
+        }
+
+        const shouldSelectFinalistsNow = enteringFinale || storedFinalistIds.length !== 2;
+        if (shouldSelectFinalistsNow) {
+            const sortedByScoreDesc = [...teams].sort((a, b) => b.score - a.score);
+            const topFinalists = sortedByScoreDesc.slice(0, 2);
+            storedFinalistIds = topFinalists.map(team => team.i);
+            localStorage.setItem(FINALE_FINALIST_IDS_KEY, JSON.stringify(storedFinalistIds));
+        }
+        const finalistIds = new Set(storedFinalistIds);
         if (!finaleSetupComplete) {
             if (typeof resetAllTeamDoneFlags === 'function') {
                 resetAllTeamDoneFlags();
@@ -1149,12 +1296,6 @@ function renderTeams() {
                 localStorage.setItem(visibilityKey, shouldBeVisible ? '1' : '0');
             }
             team.visible = shouldBeVisible;
-            if (shouldBeVisible) {
-                const doneKey = `team${team.i}Done`;
-                if (localStorage.getItem(doneKey) !== '0') {
-                    localStorage.setItem(doneKey, '0');
-                }
-            }
         });
         finaleLowestScoreTeamId = getFinLowestEligible();
         if (!isEditModeRound && finaleLowestScoreTeamId !== -1) {
@@ -1165,16 +1306,8 @@ function renderTeams() {
             }
         }
     }
-    // Always sort teams by score (lowest first) in COLLEC. GEH. round
-    if (!isEditModeRound) {
-        if (round === 'COLLEC. GEH.') {
-            teams.sort((a, b) => a.score - b.score);
-        } else if (round === 'FINALE') {
-            teams.sort((a, b) => b.score - a.score);
-        } else if (round !== '3-6-9') {
-            teams.sort((a, b) => a.score - b.score);
-        }
-    }
+    // Sort visible teams by score per round, but keep invisible teams at the bottom.
+    sortTeamsForRound(teams, round, isEditModeRound);
     // Render sorted teams
     const newRowElements = [];
     const isMultipleOfThreeTurn = nextTurnCountValue !== 0 && !isNaN(nextTurnCountValue) && (nextTurnCountValue % 3 === 0);
@@ -1191,6 +1324,7 @@ function renderTeams() {
         let name = team.name;
         let score = team.score;
         let visible = team.visible;
+        const isInvisibleTeam = !visible;
         let done = localStorage.getItem(`team${i}Done`) === '1';
         let addCount = getTeamAddCount(i);
         const teamStarted = localStorage.getItem(`team${i}Started`) === '1';
@@ -1294,8 +1428,8 @@ function renderTeams() {
             enable10 = true;
         }
         const enable15 = inEditMode ? true : (round === 'GALLERIJ' && canScoreThisRow);
-        const shouldDisableStart = disableStartStop || rowLocked || !enableRow || enforceSingleStart || threeSixNineScoreWindow || finaleVictoryLocked;
-        const shouldDisableSkip = disableStartStop || rowLocked || !enableRow || enforceSingleStart || finaleVictoryLocked;
+        const shouldDisableStart = disableStartStop || rowLocked || !enableRow || enforceSingleStart || threeSixNineScoreWindow || finaleVictoryLocked || isInvisibleTeam;
+        const shouldDisableSkip = disableStartStop || rowLocked || !enableRow || enforceSingleStart || finaleVictoryLocked || isInvisibleTeam;
         const startBtnBg = shouldDisableStart ? '#222222' : (round === '3-6-9' ? '#007a26' : (isActiveTeam ? 'red' : enableRow ? 'darkblue' : '#222222'));
         const showSkipButton = !inEditMode && round === '3-6-9' && !showNameOnlyBeforeStart;
         const skipBtnBg = shouldDisableSkip ? '#222222' : '#8b1a1a';
@@ -1311,32 +1445,40 @@ function renderTeams() {
         const startCheckMarkup = showStartCheck ? `<span class='team-start-check' id="teamStartCheck${i}" style="color: ${startCheckColor};">${teamStarted ? '&#10003;' : ''}</span>` : '';
 
         const visibilityLocked = !inEditMode;
-        const visibilityLockAttrs = visibilityLocked ? 'data-locked="true" tabindex="-1" aria-disabled="true"' : '';
+        const visibilityLockAttrs = visibilityLocked ? 'disabled data-locked="true" tabindex="-1" aria-disabled="true"' : '';
         const visibilityAccentColor = inEditMode ? '#2222aa' : 'darkorange';
         const visibilityPointerStyle = visibilityLocked ? 'pointer-events: none;' : '';
-        const nameBgColor = (finaleVictoryLocked && finaleWinnerTeamId === i)
-            ? '#0a8f32'
-            : (rowLocked ? '#222222' : '#fea400');
+        const nameBgColor = isInvisibleTeam
+            ? '#d0d0d0'
+            : (finaleVictoryLocked && finaleWinnerTeamId === i)
+                ? '#0a8f32'
+                : (rowLocked ? '#222222' : '#fea400');
+        const scoreBgColor = isInvisibleTeam
+            ? '#bdbdbd'
+            : (finaleVictoryLocked && finaleWinnerTeamId === i)
+                ? '#0a8f32 !important'
+                : (rowLocked ? '#222222' : 'darkorange');
+        const invisibleRowStyle = isInvisibleTeam ? 'opacity: 0.55; filter: grayscale(1) brightness(1.1);' : '';
         row.innerHTML = `
-            <div class='team-row-inner' style="margin-bottom: -4px;">
+            <div class='team-row-inner' style="margin-bottom: -4px; ${invisibleRowStyle}">
             <span class='col-visible'><input type="checkbox" id="visibleTeam${i}" ${visible ? "checked" : ""} ${visibilityLockAttrs} style="width: 38px; height: 38px; transform: scale(1.8); accent-color: ${visibilityAccentColor}; margin-right: 24px; ${visibilityPointerStyle}"/></span>
-                <span class='col-name'><input id="nameTeam${i}" value="${name}" class="${rowLocked ? 'stopped-team-name' : ''}" style="background-color: ${nameBgColor}; color: black; font-size: 1.3em; padding: 14px 10px; min-width: 180px; max-width: 320px; min-height: 65px; width: 100%;" ${(round !== 'EDIT MODE') ? 'disabled' : ''}/></span>
+                <span class='col-name'><input id="nameTeam${i}" value="${name}" class="${rowLocked ? 'stopped-team-name' : ''}" style="background-color: ${nameBgColor}; color: black; font-size: 1.3em; padding: 14px 10px; min-width: 180px; max-width: 320px; min-height: 65px; width: 100%;" ${(round !== 'EDIT MODE' || isInvisibleTeam) ? 'disabled' : ''}/></span>
                 <span class='col-buttons' style="${controlsHiddenStyle}">
                     <button id="startTeam${i}" style="background-color: ${startBtnBg}; color: white; font-size: 1.1em; padding: 18px 10px; min-width: ${startButtonWidth}px; width: ${startButtonWidth}px; min-height: 60px; margin-left: 2px; margin-right: 6px;" ${shouldDisableStart ? 'disabled' : ''}>${startButtonLabel}</button>
                     ${showSkipButton ? `<button id="skipTeam${i}" style="background-color: ${skipBtnBg}; color: white; font-size: 1.1em; padding: 18px 10px; min-width: 60px; width: 60px; min-height: 60px; margin-right: 12px; border-radius: 8px;" ${shouldDisableSkip ? 'disabled' : ''}>&#10007;</button>` : ''}
-                    <button id="addTeam${i}_10" style="background-color: ${rowLocked ? '#222222' : (round === 'GALLERIJ' ? '#222222' : enable10 ? (round === '3-6-9' && reachedThreeSixNineTurnCap ? '#222222' : 'green') : '#222222')}; color: white; font-size: 1.3em; padding: 18px 8px; min-width: 70px; margin-right: 6px;" ${rowLocked || !enable10 || round === 'GALLERIJ' || (round === '3-6-9' && reachedThreeSixNineTurnCap) ? 'disabled' : ''}> +10 </button>
-                    <button id="addTeam${i}_20" style="background-color: ${rowLocked ? '#222222' : enable20 ? 'green' : '#222222'}; color: white; font-size: 1.3em; padding: 18px 8px; min-width: 70px; margin-right: 6px;" ${rowLocked || !enable20 ? 'disabled' : ''}> +20 </button>
-                    <button id="addTeam${i}_30" style="background-color: ${rowLocked ? '#222222' : enable30 ? 'green' : '#222222'}; color: white; font-size: 1.3em; padding: 18px 8px; min-width: 70px; margin-right: 6px;" ${rowLocked || !enable30 ? 'disabled' : ''}> +30 </button>
-                    <button id="addTeam${i}_40" style="background-color: ${rowLocked ? '#222222' : enable40 ? 'green' : '#222222'}; color: white; font-size: 1.3em; padding: 18px 8px; min-width: 70px; margin-right: 6px;" ${rowLocked || !enable40 ? 'disabled' : ''}> +40 </button>
-                    <button id="addTeam${i}_50" style="background-color: ${rowLocked ? '#222222' : enable50 ? 'green' : '#222222'}; color: white; font-size: 1.3em; padding: 18px 8px; min-width: 70px; margin-right: 6px;" ${rowLocked || !enable50 ? 'disabled' : ''}> +50 </button>
-                    <button id="addTeam${i}_15" style="background-color: ${rowLocked ? '#222222' : (enable15 ? 'green' : '#222222')}; color: white; font-size: 1.3em; padding: 18px 8px; min-width: 70px; margin-right: 6px;" ${rowLocked || !enable15 ? 'disabled' : ''}> +15 </button>
-                    <button id="subTeam${i}" style="background-color: ${(rowLocked && !allowFinalePenaltyOnDoneRow) ? '#222222' : (enableSub ? 'darkred' : '#222222')}; color: white; font-size: 1.3em; padding: 18px 8px; min-width: 70px; margin-right: 8px;" ${((rowLocked && !allowFinalePenaltyOnDoneRow) || !enableSub) ? 'disabled' : ''}> -20 </button>
+                    <button id="addTeam${i}_10" style="background-color: ${rowLocked ? '#222222' : (round === 'GALLERIJ' ? '#222222' : enable10 ? (round === '3-6-9' && reachedThreeSixNineTurnCap ? '#222222' : 'green') : '#222222')}; color: white; font-size: 1.3em; padding: 18px 8px; min-width: 70px; margin-right: 6px;" ${isInvisibleTeam || rowLocked || !enable10 || round === 'GALLERIJ' || (round === '3-6-9' && reachedThreeSixNineTurnCap) ? 'disabled' : ''}> +10 </button>
+                    <button id="addTeam${i}_20" style="background-color: ${rowLocked ? '#222222' : enable20 ? 'green' : '#222222'}; color: white; font-size: 1.3em; padding: 18px 8px; min-width: 70px; margin-right: 6px;" ${isInvisibleTeam || rowLocked || !enable20 ? 'disabled' : ''}> +20 </button>
+                    <button id="addTeam${i}_30" style="background-color: ${rowLocked ? '#222222' : enable30 ? 'green' : '#222222'}; color: white; font-size: 1.3em; padding: 18px 8px; min-width: 70px; margin-right: 6px;" ${isInvisibleTeam || rowLocked || !enable30 ? 'disabled' : ''}> +30 </button>
+                    <button id="addTeam${i}_40" style="background-color: ${rowLocked ? '#222222' : enable40 ? 'green' : '#222222'}; color: white; font-size: 1.3em; padding: 18px 8px; min-width: 70px; margin-right: 6px;" ${isInvisibleTeam || rowLocked || !enable40 ? 'disabled' : ''}> +40 </button>
+                    <button id="addTeam${i}_50" style="background-color: ${rowLocked ? '#222222' : enable50 ? 'green' : '#222222'}; color: white; font-size: 1.3em; padding: 18px 8px; min-width: 70px; margin-right: 6px;" ${isInvisibleTeam || rowLocked || !enable50 ? 'disabled' : ''}> +50 </button>
+                    <button id="addTeam${i}_15" style="background-color: ${rowLocked ? '#222222' : (enable15 ? 'green' : '#222222')}; color: white; font-size: 1.3em; padding: 18px 8px; min-width: 70px; margin-right: 6px;" ${isInvisibleTeam || rowLocked || !enable15 ? 'disabled' : ''}> +15 </button>
+                    <button id="subTeam${i}" style="background-color: ${(rowLocked && !allowFinalePenaltyOnDoneRow) ? '#222222' : (enableSub ? 'darkred' : '#222222')}; color: white; font-size: 1.3em; padding: 18px 8px; min-width: 70px; margin-right: 8px;" ${isInvisibleTeam || ((rowLocked && !allowFinalePenaltyOnDoneRow) || !enableSub) ? 'disabled' : ''}> -20 </button>
                     <span class='score-input-wrapper'>
-                        <input id="scoreTeam${i}" min="0" max="999" type="number" value="${score}" class="${rowLocked ? 'score-input stopped-team-score' : 'score-input'}" style="width:100px; background-color: ${rowLocked ? '#222222' : 'darkorange'}; color: white;min-height: 65px; font-size: 1.2em; padding: 14px 6px; margin: 0 8px 0 0;" ${inEditMode ? '' : 'readonly'} />
+                        <input id="scoreTeam${i}" min="0" max="999" type="number" value="${score}" class="${rowLocked ? 'score-input stopped-team-score' : 'score-input'}" style="width:100px; background-color: ${scoreBgColor}; color: white;min-height: 65px; font-size: 1.2em; padding: 14px 6px; margin: 0 8px 0 0;" ${isInvisibleTeam ? 'disabled' : (inEditMode ? '' : 'readonly')} />
                         ${inEditMode ? `
                         <span class='score-spin-buttons'>
-                            <button type="button" id="scoreSpinUp${i}" class="score-spin-button" aria-label="Increase score">+</button>
-                            <button type="button" id="scoreSpinDown${i}" class="score-spin-button" aria-label="Decrease score">-</button>
+                            <button type="button" id="scoreSpinUp${i}" class="score-spin-button" aria-label="Increase score" ${isInvisibleTeam ? 'disabled' : ''}>+</button>
+                            <button type="button" id="scoreSpinDown${i}" class="score-spin-button" aria-label="Decrease score" ${isInvisibleTeam ? 'disabled' : ''}>-</button>
                         </span>
                         ` : ''}
                     </span>
@@ -1560,6 +1702,8 @@ function renderTeams() {
                     return;
                 }
                 localStorage.setItem(`visibleTeam${i}`, this.checked ? "1" : "0");
+                localStorage.setItem('adminUpdate', Date.now());
+                renderTeamsDebounced();
             };
         }
         document.getElementById(`startTeam${i}`).onclick = function () {
@@ -1642,12 +1786,35 @@ function renderTeams() {
                     }
                 }
                 if (round === 'FINALE') {
-                    const nextFinalist = teams.find(team => !team.done && team.visible);
-                    if (nextFinalist) {
-                        localStorage.setItem('nextEnabledTeamIndex', '-1');
-                        localStorage.setItem('pendingStartTeamId', String(nextFinalist.k));
+                    // Finale should only rotate between the two visible finalists.
+                    const finalists = teams
+                        .filter(team => team.visible)
+                        .sort((a, b) => b.score - a.score)
+                        .slice(0, 2);
+                    const remainingFinalists = finalists.filter(team => !team.done);
+
+                    localStorage.setItem('nextEnabledTeamIndex', '-1');
+                    if (remainingFinalists.length > 0) {
+                        // One finalist still not done: enable that team.
+                        localStorage.setItem('pendingStartTeamId', String(remainingFinalists[0].k));
+                    } else if (finalists.length > 0) {
+                        // Both finalists done: reset and enable the lowest-score finalist.
+                        finalists.forEach(team => {
+                            localStorage.setItem(`team${team.k}Done`, '0');
+                        });
+                        const lowestFinalist = [...finalists].sort((a, b) => a.score - b.score)[0];
+                        localStorage.setItem('pendingStartTeamId', String(lowestFinalist.k));
+
+                        // End of a full finale cycle (both teams played): increment turn counter.
+                        let counterValue = parseInt(localStorage.getItem('nextTurnCount') || '1', 10);
+                        if (isNaN(counterValue) || counterValue < 1) {
+                            counterValue = 1;
+                        }
+                        localStorage.setItem('nextTurnCount', String(counterValue + 1));
+                        if (typeof refreshNextTurnCounterDisplay === 'function') {
+                            refreshNextTurnCounterDisplay();
+                        }
                     } else {
-                        localStorage.setItem('nextEnabledTeamIndex', nextIndex);
                         localStorage.removeItem('pendingStartTeamId');
                     }
                 } else {

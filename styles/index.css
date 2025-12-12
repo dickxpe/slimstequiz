@@ -3,5 +3,5 @@ body {
     min-height: 100vh;
     margin: 0;
     padding: 0;
-    background: linear-gradient(180deg, orange 0%, darkred 100%);
+    background: linear-gradient(90deg, #96171e 0%, #d8522f 100%);
 }

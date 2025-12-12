@@ -332,7 +332,7 @@ function injectHeaderText() {
     roundLabel.style.fontFamily = "'DIN Black Regular', Arial, sans-serif";
     roundLabel.style.fontSize = '2.2em';
     roundLabel.style.fontWeight = 'bold';
-    roundLabel.style.color = '#2222aa';
+    roundLabel.style.color = '#fff';
     roundLabel.style.background = '#f9e8b122';
     roundLabel.style.borderRadius = '12px';
     roundLabel.style.padding = '8px 64px';
@@ -474,9 +474,9 @@ function update(time) {
 
     let deltaTime = time - prevTime;
 
-    const my_gradient = context.createLinearGradient(0, 0, 0, height);
-    my_gradient.addColorStop(0, "orange");
-    my_gradient.addColorStop(1, "darkred");
+    const my_gradient = context.createLinearGradient(0, 0, width, 0);
+    my_gradient.addColorStop(0, "#96171e");
+    my_gradient.addColorStop(1, "#d8522f");
 
     context.fillStyle = my_gradient;
     context.fillRect(0, 0, width, height);
