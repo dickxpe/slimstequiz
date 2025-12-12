@@ -1606,10 +1606,14 @@ function renderTeams() {
             localStorage.setItem('quizStarted', '1');
             localStorage.setItem('quizWasStarted', '1');
             localStorage.setItem('nextEnabledTeamIndex', 0); // Only enable first row
-            // Hide the title label immediately
-            var titleLabel = document.querySelector('#titleRow label');
-            if (titleLabel) {
-                titleLabel.style.display = 'none';
+            // Update title/timer-note UI immediately (storage event won't fire in same tab).
+            if (typeof window.hideTitleLabelIfQuizStarted === 'function') {
+                window.hideTitleLabelIfQuizStarted();
+            } else {
+                var titleLabel = document.querySelector('#titleRow label');
+                if (titleLabel) titleLabel.style.display = 'none';
+                var timerNote = document.getElementById('timerNote');
+                if (timerNote) timerNote.style.display = 'inline-block';
             }
             window.open('src/quiz.html', '_blank', 'location=no,menubar=no,scrollbars=no,status=no,toolbar=no');
             renderTeamsDebounced(); // queue re-render to show STOP button and hide add row

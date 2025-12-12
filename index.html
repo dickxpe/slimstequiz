@@ -124,15 +124,16 @@
             <input type="text" id="inputField2" value="Slimste Mens" style="background-color: #fea400; width: 224px; height: 58px; font-size: 1.1em; padding: 0 10px;" />
             <input type="text" id="inputField3" value="TER WERELD" style="background-color: #fea400;width: 180px; height: 58px; font-size: 1.1em; padding: 0 10px;" />
             <button style="background-color: green; color:white; width: 422px; height: 58px; font-size: 1.5em;" id="startQuiz" onclick="window.open('src/quiz.html', '_blank', 'location=no,menubar=no,scrollbars=no,status=no,toolbar=no')">START QUIZ</button>
-             <br /><label  style="color:white; font-size: 1.5em; font-weight: bold;">De timers tellen enkel af ​​wanneer het quiz venster geopend is.</label>
+               <br /><label id="timerNote" style="color:white; font-size: 1.5em; font-weight: bold;">De timers tellen enkel af wanneer het quiz venster geopend is.</label>
         </div>
         <script>
         function hideTitleLabelIfQuizStarted() {
-            var titleLabel = document.querySelector('#titleRow label');
             var quizStarted = localStorage.getItem('quizStarted') === '1' || localStorage.getItem('quizWasStarted') === '1';
-            if (titleLabel) {
-                titleLabel.style.display = quizStarted ? 'none' : 'inline-block';
-            }
+            var titleLabel = document.querySelector('#titleRow label');
+            if (titleLabel) titleLabel.style.display = quizStarted ? 'none' : 'inline-block';
+
+            var timerNote = document.getElementById('timerNote');
+            if (timerNote) timerNote.style.display = quizStarted ? 'inline-block' : 'none';
         }
         window.addEventListener('DOMContentLoaded', hideTitleLabelIfQuizStarted);
         window.addEventListener('storage', hideTitleLabelIfQuizStarted);
