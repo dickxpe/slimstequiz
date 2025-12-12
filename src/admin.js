@@ -118,6 +118,7 @@ if (!document.getElementById('admin-score-spin-style')) {
 const MAX_TEAMS = 9;
 const START_CHECK_ROUND_KEY = 'startCheckRoundName';
 const FINALE_FINALIST_IDS_KEY = 'finaleFinalistIds';
+const FINALE_LAST_STOP_TEAM_ID_KEY = 'finaleLastStopTeamId';
 const ADMIN_TITLE_PARTS = ['De', 'Slimste', 'Quiz'];
 const ROUND_COUNTER_CONFIG = {
     'OPEN DEUR': ['openDeurTwentyCount'],
@@ -300,6 +301,9 @@ function sortTeamsForRound(teams, round, isEditModeRound) {
         return;
     }
 
+    const pendingStartTeamIdRaw = localStorage.getItem('pendingStartTeamId');
+    const pendingStartTeamId = pendingStartTeamIdRaw ? parseInt(pendingStartTeamIdRaw, 10) : -1;
+
     const byStableId = (a, b) => a.i - b.i;
     const visibleFirst = (a, b) => {
         const aVisible = !!a.visible;
@@ -323,7 +327,16 @@ function sortTeamsForRound(teams, round, isEditModeRound) {
         if (vis !== 0) return vis;
         if (!a.visible && !b.visible) return byStableId(a, b);
         const diff = b.score - a.score;
-        return diff !== 0 ? diff : byStableId(a, b);
+        if (diff !== 0) return diff;
+        // In FINALE, if two teams are tied, show the next-starting team below.
+        if (round === 'FINALE' && pendingStartTeamId !== -1 && a.visible && b.visible) {
+            const aIsNext = a.i === pendingStartTeamId;
+            const bIsNext = b.i === pendingStartTeamId;
+            if (aIsNext !== bIsNext) {
+                return aIsNext ? 1 : -1;
+            }
+        }
+        return byStableId(a, b);
     };
 
     if (round === 'COLLEC. GEH.') {
@@ -416,6 +429,7 @@ function renderTeams() {
     if (round !== 'FINALE' && finaleSetupComplete) {
         localStorage.removeItem(finaleSetupKey);
         localStorage.removeItem(FINALE_FINALIST_IDS_KEY);
+        localStorage.removeItem(FINALE_LAST_STOP_TEAM_ID_KEY);
     }
     const isEditModeRound = round === 'EDIT MODE';
     const THREE_SIX_NINE_MAX_TURNS = 12;
@@ -1767,6 +1781,9 @@ function renderTeams() {
             if (currentTeam === (i - 1)) {
                 // STOP logic: mark team as done
                 localStorage.setItem(`team${i}Done`, '1');
+                if (round === 'FINALE') {
+                    localStorage.setItem(FINALE_LAST_STOP_TEAM_ID_KEY, String(i));
+                }
                 let nextIndex = -1;
                 // Always enable the row with the lowest score that is not done and is visible
                 let teams = [];
@@ -1790,11 +1807,32 @@ function renderTeams() {
                     }
                 }
                 if (round === 'FINALE') {
-                    // Finale should only rotate between the two visible finalists.
-                    const finalists = teams
-                        .filter(team => team.visible)
-                        .sort((a, b) => b.score - a.score)
-                        .slice(0, 2);
+                    // Finale should only rotate between the two locked finalists (fallback: top-2 visible).
+                    let lockedFinalistIds = [];
+                    try {
+                        const raw = localStorage.getItem(FINALE_FINALIST_IDS_KEY);
+                        const parsed = raw ? JSON.parse(raw) : [];
+                        if (Array.isArray(parsed)) {
+                            lockedFinalistIds = parsed
+                                .map(id => parseInt(id, 10))
+                                .filter(id => !isNaN(id));
+                        }
+                    } catch (e) {
+                        lockedFinalistIds = [];
+                    }
+
+                    let finalists = [];
+                    if (lockedFinalistIds.length === 2) {
+                        finalists = lockedFinalistIds
+                            .map(id => teams.find(team => team.k === id))
+                            .filter(Boolean);
+                    }
+                    if (finalists.length !== 2) {
+                        finalists = teams
+                            .filter(team => team.visible)
+                            .sort((a, b) => b.score - a.score)
+                            .slice(0, 2);
+                    }
                     const remainingFinalists = finalists.filter(team => !team.done);
 
                     localStorage.setItem('nextEnabledTeamIndex', '-1');
@@ -1803,11 +1841,18 @@ function renderTeams() {
                         localStorage.setItem('pendingStartTeamId', String(remainingFinalists[0].k));
                     } else if (finalists.length > 0) {
                         // Both finalists done: reset and enable the lowest-score finalist.
+                        // Tie-break rule: if both end with the same score, enable the team that was second (last STOP).
                         finalists.forEach(team => {
                             localStorage.setItem(`team${team.k}Done`, '0');
                         });
-                        const lowestFinalist = [...finalists].sort((a, b) => a.score - b.score)[0];
-                        localStorage.setItem('pendingStartTeamId', String(lowestFinalist.k));
+                        const sortedByScoreAsc = [...finalists].sort((a, b) => a.score - b.score);
+                        const lowestFinalist = sortedByScoreAsc[0];
+                        const highestFinalist = sortedByScoreAsc[1] || lowestFinalist;
+                        const isTie = (lowestFinalist.score | 0) === (highestFinalist.score | 0);
+                        const lastStopId = parseInt(localStorage.getItem(FINALE_LAST_STOP_TEAM_ID_KEY) || '-1', 10);
+                        const lastStopIsFinalist = !isNaN(lastStopId) && finalists.some(team => team.k === lastStopId);
+                        const nextStarterId = (isTie && lastStopIsFinalist) ? lastStopId : lowestFinalist.k;
+                        localStorage.setItem('pendingStartTeamId', String(nextStarterId));
 
                         // End of a full finale cycle (both teams played): increment turn counter.
                         let counterValue = parseInt(localStorage.getItem('nextTurnCount') || '1', 10);
